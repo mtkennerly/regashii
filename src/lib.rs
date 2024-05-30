@@ -926,6 +926,13 @@ Windows Registry Editor Version 5.00
                 )
                 .with("sz-line-break", Value::Sz("a\nb".to_string()))
                 .with("hex-continuations", Value::Binary(vec![0, 1, 2]))
+                .with(
+                    "hex-continuations-with-long-name ............................................ end",
+                    Value::Binary(vec![
+                        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+                        26, 27, 28, 29, 30, 31,
+                    ]),
+                )
                 .with("semi;colons", Value::Sz("and\"quotes;".to_string())),
         );
 
@@ -938,6 +945,9 @@ Windows Registry Editor Version 5.00
 [HKEY_CURRENT_USER\Software\regashii\irregular]
 "dword"=hex(4):00
 "hex-continuations"=hex:00,01,02
+"hex-continuations-with-long-name ............................................ end"=hex:00,\
+  01,02,03,04,05,06,07,08,09,0a,0b,0c,0d,0e,0f,10,11,12,13,14,15,16,17,18,19,\
+  1a,1b,1c,1d,1e,1f
 "semi;colons"="and\"quotes;"
 "sz-line-break"=hex(1):61,00,0a,00,62,00,00,00
 "#

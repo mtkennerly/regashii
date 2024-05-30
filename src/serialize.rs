@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
-
 use crate::{Format, Key, KeyName, Kind, RawValue, ValueName};
 
 fn quoted(raw: &str) -> String {
@@ -46,7 +44,7 @@ pub fn values(values: &BTreeMap<ValueName, RawValue>) -> Vec<String> {
 
     for (name, val) in values {
         let name = value_name(name);
-        let value = value(val);
+        let value = value(val, name.len() + 1);
         lines.push(format!("{name}={value}"));
     }
 
@@ -60,17 +58,36 @@ pub fn value_name(name: &ValueName) -> String {
     }
 }
 
-pub fn value(value: &RawValue) -> String {
+pub fn value(value: &RawValue, offset: usize) -> String {
     match value {
         RawValue::Delete => "-".to_string(),
         RawValue::Sz(data) => quoted(&escape(data)),
         RawValue::Dword(data) => format!("dword:{:0>8x}", data),
         RawValue::Hex { kind, bytes } => {
-            let bytes = bytes.iter().map(|x| format!("{:0>2x}", x)).join(",");
+            let mut out = String::new();
+
             match kind {
-                Kind::Binary => format!("hex:{}", bytes),
-                kind => format!("hex({:x}):{}", u8::from(*kind), bytes),
+                Kind::Binary => out.push_str("hex:"),
+                kind => out.push_str(&format!("hex({:x}):", u8::from(*kind))),
             }
+
+            let mut running_len = offset + out.len();
+            for (i, byte) in bytes.iter().map(|x| format!("{:0>2x}", x)).enumerate() {
+                out.push_str(&byte);
+                running_len += 2;
+
+                if i + 1 < bytes.len() {
+                    out.push(',');
+                    running_len += 1;
+
+                    if running_len > 76 {
+                        out.push_str("\\\n  ");
+                        running_len = 2;
+                    }
+                }
+            }
+
+            out
         }
     }
 }
@@ -111,6 +128,6 @@ mod tests {
     #[test_case("hex(b):01,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![1, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 1")]
     #[test_case("hex(b):ff,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![255, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 255")]
     fn valid_values(raw: &str, parsed: RawValue) {
-        assert_eq!(raw, value(&parsed));
+        assert_eq!(raw, value(&parsed, 0));
     }
 }
