@@ -3,7 +3,7 @@
 Regashii is a Rust crate that lets you (de)serialize Windows Regedit `*.reg` files.
 
 * [Examples](https://github.com/mtkennerly/regashii/tree/master/examples)
-* [Documentation](https://docs.rs/crate/regashii/latest)
+* [Documentation](https://docs.rs/regashii/latest/regashii/)
 
 ## Design
 * This crate aims to be as tolerant as Regedit itself.
