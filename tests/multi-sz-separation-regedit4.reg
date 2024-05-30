@@ -1,0 +1,9 @@
+REGEDIT4
+
+[HKEY_CURRENT_USER\Software\regashii\multi-sz-separation]
+"a"=hex(7):61,00
+"a-_"=hex(7):61,00,00
+"a-_-b"=hex(7):61,00,00,62,00
+"a-b"=hex(7):61,00,62,00
+"a-b-_"=hex(7):61,00,62,00,00
+

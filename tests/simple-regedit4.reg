@@ -1,0 +1,12 @@
+REGEDIT4
+
+[HKEY_CURRENT_USER\Software\regashii\simple]
+; unrecognized
+@="default"
+"sz-a"="a"
+"dword-1"=dword:00000001
+"binary-a"=hex:61
+"remove"=-
+
+[-HKEY_CURRENT_USER\Software\regashii\remove]
+

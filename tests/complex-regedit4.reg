@@ -1,0 +1,17 @@
+REGEDIT4
+
+[HKEY_CURRENT_USER\Software\regashii\complex]
+"binary-a"=hex:61
+"binary-a-b"=hex:61,62
+"dword-0"=dword:00000000
+"dword-255"=dword:000000ff
+"expand-sz"=hex(2):00
+"expand-sz-a"=hex(2):61,00
+"multi-sz"=hex(7):00
+"multi-sz-a"=hex(7):61,00
+"multi-sz-a-b"=hex(7):61,00,62,00,00
+"qword-0"=hex(b):00,00,00,00,00,00,00,00
+"qword-255"=hex(b):ff,00,00,00,00,00,00,00
+"sz-a"="a"
+"sz-sp\\ec\"ial"="sp\\ec\"ial"
+

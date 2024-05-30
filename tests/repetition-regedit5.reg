@@ -1,0 +1,20 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\regashii\repeated-Key]
+"foo"="1"
+
+[-HKEY_CURRENT_USER\Software\regashii\repeated-key]
+"skipped"=""
+
+[HKEY_CURRENT_USER\Software\regashii\repeated-kEy]
+"bar"="2"
+
+[HKEY_CURRENT_USER\Software\regashii\repeated-keY]
+"baz"="3"
+
+[HKEY_CURRENT_USER\Software\regashii\repeated-value]
+"foo"="1"
+"FOO"=-
+"fOo"="2"
+"foO"="3"
+
