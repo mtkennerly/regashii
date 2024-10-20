@@ -20,7 +20,7 @@ pub fn format(format: Format) -> &'static str {
 pub fn key(name: &KeyName, key: &Key, format: Format) -> String {
     match key {
         Key::Delete => format!("[-{}]", name.0),
-        Key::Add(xs) => {
+        Key::Add { values: xs } => {
             let mut lines = vec![format!("[{}]", name.0)];
 
             let xs: BTreeMap<_, _> = xs.clone().into_iter().map(|(n, v)| (n, v.into_raw(format))).collect();
@@ -28,7 +28,7 @@ pub fn key(name: &KeyName, key: &Key, format: Format) -> String {
 
             lines.join("\n")
         }
-        Key::Replace(xs) => {
+        Key::Replace { values: xs } => {
             let mut lines = vec![format!("[-{}]\n", name.0), format!("[{}]", name.0)];
 
             let xs: BTreeMap<_, _> = xs.clone().into_iter().map(|(n, v)| (n, v.into_raw(format))).collect();

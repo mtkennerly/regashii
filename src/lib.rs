@@ -53,20 +53,38 @@ impl Registry {
                 (_, Key::Delete) => {
                     self.keys.insert(normalized(), Key::Delete);
                 }
-                (Key::Delete, Key::Add(new_values) | Key::Replace(new_values)) => {
-                    self.keys.insert(normalized(), Key::Replace(new_values));
+                (Key::Delete, Key::Add { values: new_values } | Key::Replace { values: new_values }) => {
+                    self.keys.insert(normalized(), Key::Replace { values: new_values });
                 }
-                (Key::Add(mut stored_values), Key::Add(new_values)) => {
+                (
+                    Key::Add {
+                        values: mut stored_values,
+                    },
+                    Key::Add { values: new_values },
+                ) => {
                     stored_values.extend(new_values);
-                    self.keys.insert(lookup, Key::Add(stored_values));
+                    self.keys.insert(lookup, Key::Add { values: stored_values });
                 }
-                (Key::Add(mut stored_values) | Key::Replace(mut stored_values), Key::Replace(new_values)) => {
+                (
+                    Key::Add {
+                        values: mut stored_values,
+                    }
+                    | Key::Replace {
+                        values: mut stored_values,
+                    },
+                    Key::Replace { values: new_values },
+                ) => {
                     stored_values.extend(new_values);
-                    self.keys.insert(lookup, Key::Replace(stored_values));
+                    self.keys.insert(lookup, Key::Replace { values: stored_values });
                 }
-                (Key::Replace(mut stored_values), Key::Add(new_values)) => {
+                (
+                    Key::Replace {
+                        values: mut stored_values,
+                    },
+                    Key::Add { values: new_values },
+                ) => {
                     stored_values.extend(new_values);
-                    self.keys.insert(lookup, Key::Replace(stored_values));
+                    self.keys.insert(lookup, Key::Replace { values: stored_values });
                 }
             }
         } else {
@@ -207,20 +225,24 @@ pub enum Key {
     /// This key should be deleted from the registry.
     Delete,
     /// This key should be added to the registry.
-    Add(BTreeMap<ValueName, Value>),
+    Add { values: BTreeMap<ValueName, Value> },
     /// This key should be first deleted and then added to the registry.
-    Replace(BTreeMap<ValueName, Value>),
+    Replace { values: BTreeMap<ValueName, Value> },
 }
 
 impl Key {
     /// Initialize a default `Key::Add` variant.
     pub fn new() -> Self {
-        Self::Add(Default::default())
+        Self::Add {
+            values: Default::default(),
+        }
     }
 
     /// Initialize a default `Key::Replace` variant.
     pub fn new_replace() -> Self {
-        Self::Replace(Default::default())
+        Self::Replace {
+            values: Default::default(),
+        }
     }
 
     /// Add or update a value (method chain style).
@@ -244,7 +266,7 @@ impl Key {
 
         match self {
             Key::Delete => {}
-            Key::Add(values) | Key::Replace(values) => {
+            Key::Add { values } | Key::Replace { values } => {
                 if let Some((stored_name, stored)) = values.remove_entry(&lookup) {
                     if stored == Value::Delete || value == Value::Delete {
                         values.insert(requested_name, value);
@@ -263,7 +285,7 @@ impl Key {
     pub fn value_name<'a>(&'a self, name: &'a ValueName) -> ValueName {
         match self {
             Key::Delete => name.clone(),
-            Key::Add(values) | Key::Replace(values) => {
+            Key::Add { values } | Key::Replace { values } => {
                 if values.contains_key(name) {
                     return name.clone();
                 }

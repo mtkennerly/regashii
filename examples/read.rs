@@ -8,13 +8,13 @@ fn main() -> Result<(), error::Read> {
             Key::Delete => {
                 println!("\n{key_name:?}  (delete)");
             }
-            Key::Add(values) => {
+            Key::Add { values } => {
                 println!("\n{key_name:?}  (add)");
                 for (value_name, value) in values {
                     println!("  {value_name:?} = {value:?}");
                 }
             }
-            Key::Replace(values) => {
+            Key::Replace { values } => {
                 println!("\n{key_name:?}  (replace)");
                 for (value_name, value) in values {
                     println!("  {value_name:?} = {value:?}");
