@@ -51,7 +51,7 @@ pub fn read_bytes(bytes: Vec<u8>) -> Option<String> {
 
 pub fn write_file<P: AsRef<Path>>(file: P, content: String, format: Format) -> Result<(), error::Write> {
     match format {
-        Format::Regedit4 => {
+        Format::Regedit4 | Format::Wine2 => {
             std::fs::write(file, content)?;
         }
         Format::Regedit5 => {

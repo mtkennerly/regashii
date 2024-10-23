@@ -5,13 +5,17 @@ pub mod error;
 mod etc;
 mod serialize;
 
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 
 /// Main struct for all *.reg file content.
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Registry {
     format: Format,
     keys: BTreeMap<KeyName, Key>,
+    wine_options: BTreeSet<WineGlobalOption>,
 }
 
 impl Registry {
@@ -19,7 +23,7 @@ impl Registry {
     pub fn new(format: Format) -> Self {
         Self {
             format,
-            keys: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -27,6 +31,12 @@ impl Registry {
     /// Will try to reuse an equivalent existing key name, if any.
     pub fn with(mut self, requested_name: impl Into<KeyName>, key: Key) -> Self {
         self.update(requested_name.into(), key);
+        self
+    }
+
+    /// Add a Wine option (method chain style).
+    pub fn with_wine_option(mut self, option: WineGlobalOption) -> Self {
+        self.wine_options.insert(option);
         self
     }
 
@@ -53,43 +63,116 @@ impl Registry {
                 (_, Key::Delete) => {
                     self.keys.insert(normalized(), Key::Delete);
                 }
-                (Key::Delete, Key::Add { values: new_values } | Key::Replace { values: new_values }) => {
-                    self.keys.insert(normalized(), Key::Replace { values: new_values });
+                (
+                    Key::Delete,
+                    Key::Add {
+                        values,
+                        wine_options,
+                        addendum,
+                    }
+                    | Key::Replace {
+                        values,
+                        wine_options,
+                        addendum,
+                    },
+                ) => {
+                    self.keys.insert(
+                        normalized(),
+                        Key::Replace {
+                            values,
+                            wine_options,
+                            addendum,
+                        },
+                    );
                 }
                 (
                     Key::Add {
                         values: mut stored_values,
+                        wine_options: mut stored_wine_options,
+                        addendum: _,
                     },
-                    Key::Add { values: new_values },
+                    Key::Add {
+                        values: new_values,
+                        wine_options: new_wine_options,
+                        addendum,
+                    },
                 ) => {
                     stored_values.extend(new_values);
-                    self.keys.insert(lookup, Key::Add { values: stored_values });
+                    stored_wine_options.extend(new_wine_options);
+                    self.keys.insert(
+                        lookup,
+                        Key::Add {
+                            values: stored_values,
+                            wine_options: stored_wine_options,
+                            addendum,
+                        },
+                    );
                 }
                 (
                     Key::Add {
                         values: mut stored_values,
+                        wine_options: mut stored_wine_options,
+                        addendum: _,
                     }
                     | Key::Replace {
                         values: mut stored_values,
+                        wine_options: mut stored_wine_options,
+                        addendum: _,
                     },
-                    Key::Replace { values: new_values },
+                    Key::Replace {
+                        values: new_values,
+                        wine_options: new_wine_options,
+                        addendum,
+                    },
                 ) => {
                     stored_values.extend(new_values);
-                    self.keys.insert(lookup, Key::Replace { values: stored_values });
+                    stored_wine_options.extend(new_wine_options);
+                    self.keys.insert(
+                        lookup,
+                        Key::Replace {
+                            values: stored_values,
+                            wine_options: stored_wine_options,
+                            addendum,
+                        },
+                    );
                 }
                 (
                     Key::Replace {
                         values: mut stored_values,
+                        wine_options: mut stored_wine_options,
+                        addendum: _,
                     },
-                    Key::Add { values: new_values },
+                    Key::Add {
+                        values: new_values,
+                        wine_options: new_wine_options,
+                        addendum,
+                    },
                 ) => {
                     stored_values.extend(new_values);
-                    self.keys.insert(lookup, Key::Replace { values: stored_values });
+                    stored_wine_options.extend(new_wine_options);
+                    self.keys.insert(
+                        lookup,
+                        Key::Replace {
+                            values: stored_values,
+                            wine_options: stored_wine_options,
+                            addendum,
+                        },
+                    );
                 }
             }
         } else {
             self.keys.insert(lookup, key);
         }
+    }
+
+    /// Access the Wine options.
+    pub fn wine_options(&self) -> &BTreeSet<WineGlobalOption> {
+        &self.wine_options
+    }
+
+    /// Access the Wine options mutably.
+    pub fn wine_options_mut(&mut self) -> &mut BTreeSet<WineGlobalOption> {
+        &mut self.wine_options
     }
 
     /// Reuse an equivalent existing key name or normalize the requested one.
@@ -140,6 +223,13 @@ impl Registry {
         let mut current_key = None;
 
         for line in normalized.lines().map(|x| x.trim()).filter(|x| !x.is_empty()) {
+            if current_key.is_none() {
+                if let Some(wine_option) = deserialize::wine_global_option(line) {
+                    out.wine_options.insert(wine_option);
+                    continue;
+                }
+            }
+
             if let Some((name, key)) = deserialize::key(line) {
                 if let (Some(n), Some(k)) = (current_key_name, current_key) {
                     out.update(n, k);
@@ -148,6 +238,13 @@ impl Registry {
                 current_key_name = Some(name);
                 current_key = Some(key);
                 continue;
+            }
+
+            if let Some(wine_option) = deserialize::wine_key_option(line) {
+                if let Some(current_key) = current_key.as_mut() {
+                    current_key.add_wine_option(wine_option);
+                    continue;
+                }
             }
 
             if let Some((name, value)) = deserialize::named_value(line) {
@@ -167,6 +264,12 @@ impl Registry {
     /// Serialize content for a *.reg file.
     pub fn serialize(&self) -> String {
         let mut parts = vec![serialize::format(self.format).to_string()];
+
+        let wine_options = serialize::wine_global_options(&self.wine_options);
+        if !wine_options.is_empty() {
+            parts.push("\n".to_string());
+            parts.extend(wine_options);
+        }
 
         for (name, key) in &self.keys {
             parts.push("\n\n".to_string());
@@ -196,11 +299,24 @@ pub enum Format {
     Regedit5,
     /// This corresponds to Regedit's "Win9x/NT4 registration files (*.reg)" option.
     Regedit4,
+    /// This corresponds to the format used by Wine on Linux.
+    ///
+    /// Wine does not recommend directly editing its registry files,
+    /// so use this at your own discretion.
+    Wine2,
 }
 
 impl Format {
     pub const REGEDIT5: &'static str = "Windows Registry Editor Version 5.00";
     pub const REGEDIT4: &'static str = "REGEDIT4";
+    pub const WINE2: &'static str = "WINE REGISTRY Version 2";
+
+    fn is_wine(&self) -> bool {
+        match self {
+            Format::Regedit5 | Format::Regedit4 => false,
+            Format::Wine2 => true,
+        }
+    }
 }
 
 /// A registry key name.
@@ -225,9 +341,21 @@ pub enum Key {
     /// This key should be deleted from the registry.
     Delete,
     /// This key should be added to the registry.
-    Add { values: BTreeMap<ValueName, Value> },
+    Add {
+        values: BTreeMap<ValueName, Value>,
+        /// Any extra content after the key name's closing bracket.
+        /// Wine uses this to store the modified time.
+        addendum: Option<String>,
+        wine_options: BTreeSet<WineKeyOption>,
+    },
     /// This key should be first deleted and then added to the registry.
-    Replace { values: BTreeMap<ValueName, Value> },
+    Replace {
+        values: BTreeMap<ValueName, Value>,
+        /// Any extra content after the key name's closing bracket.
+        /// Wine uses this to store the modified time.
+        addendum: Option<String>,
+        wine_options: BTreeSet<WineKeyOption>,
+    },
 }
 
 impl Key {
@@ -235,6 +363,8 @@ impl Key {
     pub fn new() -> Self {
         Self::Add {
             values: Default::default(),
+            wine_options: Default::default(),
+            addendum: Default::default(),
         }
     }
 
@@ -242,6 +372,8 @@ impl Key {
     pub fn new_replace() -> Self {
         Self::Replace {
             values: Default::default(),
+            wine_options: Default::default(),
+            addendum: Default::default(),
         }
     }
 
@@ -258,6 +390,30 @@ impl Key {
         self
     }
 
+    /// Add an addendum after the key name (method chain style).
+    /// Does nothing for `Key::Delete`.
+    pub fn with_addendum(mut self, addendum: String) -> Self {
+        match &mut self {
+            Key::Delete => {}
+            Key::Add { addendum: stored, .. } | Key::Replace { addendum: stored, .. } => {
+                *stored = Some(addendum);
+            }
+        }
+        self
+    }
+
+    /// Add a Wine option (method chain style).
+    /// Does nothing for `Key::Delete`.
+    pub fn with_wine_option(mut self, option: WineKeyOption) -> Self {
+        match &mut self {
+            Key::Delete => {}
+            Key::Add { wine_options, .. } | Key::Replace { wine_options, .. } => {
+                wine_options.insert(option);
+            }
+        }
+        self
+    }
+
     /// Add or update a value.
     /// Will try to reuse an equivalent existing value name, if any.
     /// Does nothing for `Key::Delete`.
@@ -266,7 +422,7 @@ impl Key {
 
         match self {
             Key::Delete => {}
-            Key::Add { values } | Key::Replace { values } => {
+            Key::Add { values, .. } | Key::Replace { values, .. } => {
                 if let Some((stored_name, stored)) = values.remove_entry(&lookup) {
                     if stored == Value::Delete || value == Value::Delete {
                         values.insert(requested_name, value);
@@ -280,12 +436,34 @@ impl Key {
         }
     }
 
+    /// Add an addendum after the key name.
+    /// Does nothing for `Key::Delete`.
+    pub fn add_addendum(&mut self, addendum: String) {
+        match self {
+            Key::Delete => {}
+            Key::Add { addendum: stored, .. } | Key::Replace { addendum: stored, .. } => {
+                *stored = Some(addendum);
+            }
+        }
+    }
+
+    /// Add a Wine option.
+    /// Does nothing for `Key::Delete`.
+    pub fn add_wine_option(&mut self, option: WineKeyOption) {
+        match self {
+            Key::Delete => {}
+            Key::Add { wine_options, .. } | Key::Replace { wine_options, .. } => {
+                wine_options.insert(option);
+            }
+        }
+    }
+
     /// Reuse an equivalent existing value name or normalize the requested one.
     /// Capitalization doesn't matter.
     pub fn value_name<'a>(&'a self, name: &'a ValueName) -> ValueName {
         match self {
             Key::Delete => name.clone(),
-            Key::Add { values } | Key::Replace { values } => {
+            Key::Add { values, .. } | Key::Replace { values, .. } => {
                 if values.contains_key(name) {
                     return name.clone();
                 }
@@ -350,6 +528,8 @@ enum RawValue {
     Delete,
     /// A string value.
     Sz(String),
+    /// A string value used by Wine.
+    Str { kind: Kind, data: String },
     /// A dword value
     Dword(u32),
     /// A value represented as hexadecimal numbers.
@@ -380,6 +560,14 @@ impl Value {
         match value {
             RawValue::Delete => Self::Delete,
             RawValue::Sz(x) => Self::Sz(x),
+            RawValue::Str { kind, data } => {
+                match kind {
+                    Kind::Sz => Self::Sz(data),
+                    Kind::ExpandSz => Self::ExpandSz(data),
+                    Kind::MultiSz => Self::MultiSz(vec![data]),
+                    _ => Self::Delete, // Invalid
+                }
+            }
             RawValue::Dword(x) => Self::Dword(x),
             RawValue::Hex { kind, bytes } => {
                 let fallback = Self::Hex {
@@ -407,11 +595,11 @@ impl Value {
                     | Kind::Unknown(_) => fallback,
                     Kind::Sz => match format {
                         Format::Regedit5 => Self::Sz(fallback!(etc::utf16_bytes_to_str(bytes))),
-                        Format::Regedit4 => Self::Sz(fallback!(etc::ascii_bytes_to_str(bytes))),
+                        Format::Regedit4 | Format::Wine2 => Self::Sz(fallback!(etc::ascii_bytes_to_str(bytes))),
                     },
                     Kind::ExpandSz => match format {
                         Format::Regedit5 => Self::ExpandSz(fallback!(etc::utf16_bytes_to_str(bytes))),
-                        Format::Regedit4 => Self::ExpandSz(fallback!(etc::ascii_bytes_to_str(bytes))),
+                        Format::Regedit4 | Format::Wine2 => Self::ExpandSz(fallback!(etc::ascii_bytes_to_str(bytes))),
                     },
                     Kind::Binary => Self::Binary(bytes),
                     Kind::Dword => {
@@ -430,7 +618,7 @@ impl Value {
                             Format::Regedit5 => {
                                 fallback!(etc::utf16_bytes_to_str(bytes))
                             }
-                            Format::Regedit4 => {
+                            Format::Regedit4 | Format::Wine2 => {
                                 fallback!(etc::ascii_bytes_to_str(bytes))
                             }
                         };
@@ -469,7 +657,7 @@ impl Value {
                         RawValue::Sz(x)
                     }
                 }
-                Format::Regedit4 => {
+                Format::Regedit4 | Format::Wine2 => {
                     if x.contains(etc::SZ_INVALID_CHARS) {
                         RawValue::Hex {
                             kind: Kind::Sz,
@@ -486,7 +674,8 @@ impl Value {
                     kind: Kind::ExpandSz,
                     bytes: etc::str_to_utf16_bytes(&x),
                 },
-                Format::Regedit4 => RawValue::Hex {
+                // TODO: Should Wine use `RawValue::Str`?
+                Format::Regedit4 | Format::Wine2 => RawValue::Hex {
                     kind: Kind::ExpandSz,
                     bytes: etc::str_to_ascii_bytes(&x),
                 },
@@ -512,7 +701,7 @@ impl Value {
                         Format::Regedit5 => {
                             bytes.extend(etc::str_to_utf16_bytes(&x));
                         }
-                        Format::Regedit4 => {
+                        Format::Regedit4 | Format::Wine2 => {
                             bytes.extend(etc::str_to_ascii_bytes(&x));
                         }
                     }
@@ -523,11 +712,12 @@ impl Value {
                         bytes.push(0);
                         bytes.push(0);
                     }
-                    Format::Regedit4 => {
+                    Format::Regedit4 | Format::Wine2 => {
                         bytes.push(0);
                     }
                 }
 
+                // TODO: Should Wine use `RawValue::Str`?
                 RawValue::Hex {
                     kind: Kind::MultiSz,
                     bytes,
@@ -601,6 +791,24 @@ impl From<Kind> for u8 {
             Kind::Unknown(x) => x,
         }
     }
+}
+
+/// Wine global options.
+/// These are represented as lines beginning with `#`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WineGlobalOption {
+    Arch(String),
+    Other(String),
+}
+
+/// Wine key-level options.
+/// These are represented as lines beginning with `#`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WineKeyOption {
+    Time(u64),
+    Class(String),
+    Link,
+    Other(String),
 }
 
 #[cfg(test)]
@@ -939,6 +1147,7 @@ Windows Registry Editor Version 5.00
         let deserialized = Registry::new(Format::Regedit5).with(
             r"HKEY_CURRENT_USER\Software\regashii\irregular",
             Key::new()
+                .with_addendum("addendum".to_string())
                 .with(
                     "dword",
                     Value::Hex {
@@ -964,7 +1173,7 @@ Windows Registry Editor Version 5.00
             r#"
 Windows Registry Editor Version 5.00
 
-[HKEY_CURRENT_USER\Software\regashii\irregular]
+[HKEY_CURRENT_USER\Software\regashii\irregular] addendum
 "dword"=hex(4):00
 "hex-continuations"=hex:00,01,02
 "hex-continuations-with-long-name ............................................ end"=hex:00,\
@@ -972,6 +1181,60 @@ Windows Registry Editor Version 5.00
   1a,1b,1c,1d,1e,1f
 "semi;colons"="and\"quotes;"
 "sz-line-break"=hex(1):61,00,0a,00,62,00,00,00
+"#
+            .trim_start(),
+            deserialized.serialize()
+        );
+    }
+
+    #[test]
+    fn wine_v2() {
+        let registry = Registry::deserialize_file("tests/wine-v2.reg").unwrap();
+
+        let deserialized = Registry::new(Format::Wine2)
+            .with_wine_option(WineGlobalOption::Arch("win32".to_string()))
+            .with(
+                r"Software\regashii\wine",
+                Key::new()
+                    .with_addendum("100".to_string())
+                    .with_wine_option(WineKeyOption::Time(200))
+                    .with_wine_option(WineKeyOption::Class("foo".to_string()))
+                    .with(ValueName::Default, Value::Sz("default".to_string()))
+                    .with("binary-a", Value::Binary(vec![0x61]))
+                    .with("dword-1", Value::Dword(1))
+                    .with("multi-sz-a", Value::MultiSz(vec!["a".to_string()]))
+                    .with("expand-sz-a", Value::ExpandSz("a".to_string()))
+                    .with("sz-a", Value::Sz("a".to_string()))
+                    .with("sz-str", Value::Sz("x".to_string())),
+            )
+            .with(
+                r"Software\regashii\wine-link",
+                Key::new()
+                    .with_wine_option(WineKeyOption::Link)
+                    .with("SymbolicLinkValue", Value::Sz("foo".to_string())),
+            );
+
+        assert_eq!(deserialized, registry);
+
+        assert_eq!(
+            r#"
+WINE REGISTRY Version 2
+#arch=win32
+
+[Software\regashii\wine] 100
+#time=200
+#class="foo"
+@="default"
+"binary-a"=hex:61
+"dword-1"=dword:00000001
+"expand-sz-a"=hex(2):61,00
+"multi-sz-a"=hex(7):61,00,00
+"sz-a"="a"
+"sz-str"="x"
+
+[Software\regashii\wine-link]
+#link
+"SymbolicLinkValue"="foo"
 "#
             .trim_start(),
             deserialized.serialize()

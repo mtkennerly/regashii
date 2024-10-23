@@ -1,4 +1,4 @@
-use crate::{error, Format, Key, KeyName, Kind, RawValue, ValueName};
+use crate::{error, Format, Key, KeyName, Kind, RawValue, ValueName, WineGlobalOption, WineKeyOption};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -8,9 +8,18 @@ mod group {
     pub const DATA: &str = "data";
     pub const DEFAULT: &str = "default";
     pub const SZ: &str = "sz";
+    pub const STR: &str = "str";
+    pub const STR_KIND: &str = "str_kind";
+    pub const STR_DATA: &str = "str_data";
     pub const DWORD: &str = "dword";
     pub const HEX: &str = "hex";
     pub const KIND: &str = "kind";
+    pub const ADDENDUM: &str = "addendum";
+    pub const ARCH: &str = "arch";
+    pub const CLASS: &str = "class";
+    pub const TIME: &str = "time";
+    pub const LINK: &str = "link";
+    pub const OTHER: &str = "other";
 }
 
 fn unescape(raw: &str) -> String {
@@ -52,6 +61,7 @@ pub fn format(raw: &str) -> Result<Format, error::Deserialize> {
     match raw {
         Format::REGEDIT5 => Ok(Format::Regedit5),
         Format::REGEDIT4 => Ok(Format::Regedit4),
+        Format::WINE2 => Ok(Format::Wine2),
         x => Err(error::Deserialize::UnknownFormat(x.to_string())),
     }
 }
@@ -65,6 +75,8 @@ pub fn key(raw: &str) -> Option<(KeyName, Key)> {
             (?P<delete>-)?
             (?P<name>[^\s-].*)
             \]
+            \s*
+            (?P<addendum> [^;]+)?
         ",
         )
         .unwrap()
@@ -73,9 +85,12 @@ pub fn key(raw: &str) -> Option<(KeyName, Key)> {
     let caps = RE.captures(raw)?;
     let delete = caps.name(group::DELETE).is_some();
     let name = KeyName(caps.name(group::NAME)?.as_str().to_string());
+    let addendum = caps.name(group::ADDENDUM).map(|x| x.as_str().trim().to_string());
 
     if delete {
         Some((name, Key::Delete))
+    } else if let Some(addendum) = addendum {
+        Some((name, Key::new().with_addendum(addendum)))
     } else {
         Some((name, Key::new()))
     }
@@ -130,6 +145,12 @@ pub fn value(raw: &str) -> Option<RawValue> {
             (
                 (?P<delete>-)
                 | "(?P<sz> ([^"\\]|\\.)+ )"
+                | (?P<str>
+                    str
+                    (\( (?P<str_kind>[0-9a-fA-F]) \))?
+                    : \s*
+                    "(?P<str_data> ([^"\\]|\\.)+ )"
+                  )
                 | dword: \s* (?P<dword>[0-9a-fA-Z]{8})
                 | (?<hex>
                     hex
@@ -170,8 +191,80 @@ pub fn value(raw: &str) -> Option<RawValue> {
             vec![]
         };
         Some(RawValue::Hex { kind, bytes })
+    } else if caps.name(group::STR).is_some() {
+        let kind = caps
+            .name(group::STR_KIND)
+            .and_then(|kind| u8::from_str_radix(kind.as_str(), 16).ok())
+            .map(Kind::from)
+            .unwrap_or(Kind::Sz);
+
+        match kind {
+            Kind::Sz | Kind::ExpandSz | Kind::MultiSz => {}
+            _ => return None,
+        }
+
+        let data = caps.name(group::STR_DATA).map(|data| data.as_str().to_string())?;
+
+        Some(RawValue::Str { kind, data })
     } else {
         None
+    }
+}
+
+pub fn wine_global_option(raw: &str) -> Option<WineGlobalOption> {
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r#"(?x)
+            ^
+            \#(
+                arch=(?P<arch> .+)
+                | (?P<other> .+)
+            )
+            $
+        "#,
+        )
+        .unwrap()
+    });
+
+    let caps = RE.captures(raw)?;
+
+    if let Some(arch) = caps.name(group::ARCH) {
+        Some(WineGlobalOption::Arch(arch.as_str().to_string()))
+    } else {
+        caps.name(group::OTHER)
+            .map(|other| WineGlobalOption::Other(other.as_str().to_string()))
+    }
+}
+
+pub fn wine_key_option(raw: &str) -> Option<WineKeyOption> {
+    static RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r#"(?x)
+            ^
+            \#(
+                class="(?P<class> [^"]+)"
+                | time=(?P<time> \d+)
+                | (?P<link> link)
+                | (?P<other> .+)
+            )
+            $
+        "#,
+        )
+        .unwrap()
+    });
+
+    let caps = RE.captures(raw)?;
+
+    if let Some(class) = caps.name(group::CLASS) {
+        Some(WineKeyOption::Class(class.as_str().to_string()))
+    } else if let Some(time) = caps.name(group::TIME) {
+        let parsed: u64 = time.as_str().parse().ok()?;
+        Some(WineKeyOption::Time(parsed))
+    } else if caps.name(group::LINK).is_some() {
+        Some(WineKeyOption::Link)
+    } else {
+        caps.name(group::OTHER)
+            .map(|other| WineKeyOption::Other(other.as_str().to_string()))
     }
 }
 
@@ -197,7 +290,7 @@ mod tests {
     #[test_case(" [foo] ", "foo", Key::new() ; "outer spaces")]
     #[test_case("[foo ]", "foo ", Key::new() ; "inner trailing space")]
     #[test_case("[[baz]]", "[baz]", Key::new() ; "extra brackets")]
-    #[test_case("[foo] ; bar", "foo", Key::new() ; "ignored comment")]
+    #[test_case("[foo] bar ; baz", "foo", Key::new().with_addendum("bar".to_string()) ; "ignored comment")]
     fn valid_keys(raw: &str, name: &str, parsed: Key) {
         assert_eq!(Some((KeyName(name.to_string()), parsed)), key(raw));
     }
@@ -227,6 +320,9 @@ mod tests {
 
     #[test_case("\"foo\"", RawValue::Sz("foo".to_string()) ; "sz simple")]
     #[test_case(r#""sp\\ec\"ial""#, RawValue::Sz(r#"sp\ec"ial"#.to_string()) ; "sz escaped characters")]
+    #[test_case("str:\"foo\"", RawValue::Str { data: "foo".to_string(), kind: Kind::Sz } ; "str sz")]
+    #[test_case("str(2):\"foo\"", RawValue::Str { data: "foo".to_string(), kind: Kind::ExpandSz } ; "str expand")]
+    #[test_case("str(7):\"foo\"", RawValue::Str { data: "foo".to_string(), kind: Kind::MultiSz } ; "str multi")]
     #[test_case("dword:00000000", RawValue::Dword(0) ; "dword 0")]
     #[test_case("dword:000000ff", RawValue::Dword(255) ; "dword 255")]
     #[test_case("-", RawValue::Delete ; "delete")]
@@ -239,5 +335,24 @@ mod tests {
     #[test_case("hex(b):ff,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![255, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 255")]
     fn valid_values(raw: &str, parsed: RawValue) {
         assert_eq!(Some(parsed), value(raw));
+    }
+
+    #[test_case("str(0):\"foo\"" ; "str invalid")]
+    fn invalid_values(raw: &str) {
+        assert_eq!(None, value(raw));
+    }
+
+    #[test_case("#arch=win32", WineGlobalOption::Arch("win32".to_string()) ; "arch")]
+    #[test_case("#foo", WineGlobalOption::Other("foo".to_string()) ; "other")]
+    fn valid_wine_global_options(raw: &str, parsed: WineGlobalOption) {
+        assert_eq!(Some(parsed), wine_global_option(raw));
+    }
+
+    #[test_case("#time=100", WineKeyOption::Time(100) ; "time")]
+    #[test_case("#class=\"foo\"", WineKeyOption::Class("foo".to_string()) ; "class")]
+    #[test_case("#link", WineKeyOption::Link ; "link")]
+    #[test_case("#foo", WineKeyOption::Other("foo".to_string()) ; "other")]
+    fn valid_wine_key_options(raw: &str, parsed: WineKeyOption) {
+        assert_eq!(Some(parsed), wine_key_option(raw));
     }
 }

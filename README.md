@@ -39,7 +39,7 @@ for (key_name, key) in registry.keys() {
         Key::Delete => {
             // On import, Regedit would delete this key
         },
-        Key::Add { values } => {
+        Key::Add { values, .. } => {
             // On import, Regedit would add this key and its values
             for (value_name, value) in values {
                 match value {
@@ -49,7 +49,7 @@ for (key_name, key) in registry.keys() {
                 }
             }
         },
-        Key::Replace { values } => {
+        Key::Replace { values, .. } => {
             // On import, Regedit would delete and re-add this key and its values
             for (value_name, value) in values {
                 // ...
