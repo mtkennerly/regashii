@@ -6,12 +6,38 @@ fn quoted(raw: &str) -> String {
     format!("\"{raw}\"")
 }
 
-fn escape(raw: &str) -> String {
-    raw.replace('\\', "\\\\").replace('"', "\\\"")
+fn escape_key(raw: &str, format: Format) -> String {
+    match format {
+        Format::Regedit5 | Format::Regedit4 => raw.to_string(),
+        Format::Wine2 => {
+            let escaped = raw.replace('\\', r"\\");
+            escape_wine_unicode(&escaped)
+        }
+    }
 }
 
-fn escape_not_null(raw: &str) -> String {
-    raw.replace('\\', "\\\\").replace('"', "\\\"").replace("\\\\0", "\\0")
+fn escape_value(raw: &str, format: Format) -> String {
+    let mut escaped = raw.replace('\\', r"\\").replace('"', r#"\""#);
+
+    if format.is_wine() {
+        escaped = escaped.replace('\0', r"\0").replace('\n', r"\n").replace('\r', r"\r");
+        escaped = escape_wine_unicode(&escaped);
+    }
+
+    escaped
+}
+
+fn escape_wine_unicode(raw: &str) -> String {
+    let mut ascii = String::new();
+    for char in raw.chars() {
+        if char.is_ascii() {
+            ascii.push(char);
+        } else {
+            ascii.push_str(&format!("\\x{:x}", char as u32));
+        }
+        if char as u32 == 10 {}
+    }
+    ascii
 }
 
 pub fn format(format: Format) -> &'static str {
@@ -25,7 +51,7 @@ pub fn format(format: Format) -> &'static str {
 pub fn key_name(name: &KeyName, format: Format) -> String {
     match format {
         Format::Regedit5 | Format::Regedit4 => name.0.clone(),
-        Format::Wine2 => name.0.replace('\\', "\\\\"),
+        Format::Wine2 => escape_key(&name.0, format),
     }
 }
 
@@ -62,7 +88,7 @@ pub fn key(name: &KeyName, key: &Key, format: Format) -> String {
                 .into_iter()
                 .map(|(n, v)| (n, v.into_raw(format)))
                 .collect();
-            lines.extend(self::values(&values));
+            lines.extend(self::values(&values, format));
 
             lines.join("\n")
         }
@@ -86,40 +112,40 @@ pub fn key(name: &KeyName, key: &Key, format: Format) -> String {
                 .into_iter()
                 .map(|(n, v)| (n, v.into_raw(format)))
                 .collect();
-            lines.extend(self::values(&values));
+            lines.extend(self::values(&values, format));
 
             lines.join("\n")
         }
     }
 }
 
-pub fn values(values: &BTreeMap<ValueName, RawValue>) -> Vec<String> {
+pub fn values(values: &BTreeMap<ValueName, RawValue>, format: Format) -> Vec<String> {
     let mut lines = vec![];
 
     for (name, val) in values {
-        let name = value_name(name);
-        let value = value(val, name.len() + 1);
+        let name = value_name(name, format);
+        let value = value(val, name.len() + 1, format);
         lines.push(format!("{name}={value}"));
     }
 
     lines
 }
 
-pub fn value_name(name: &ValueName) -> String {
+pub fn value_name(name: &ValueName, format: Format) -> String {
     match name {
         ValueName::Default => "@".to_string(),
-        ValueName::Named(name) => quoted(&escape(name)),
+        ValueName::Named(name) => quoted(&escape_value(name, format)),
     }
 }
 
-pub fn value(value: &RawValue, offset: usize) -> String {
+pub fn value(value: &RawValue, offset: usize, format: Format) -> String {
     match value {
         RawValue::Delete => "-".to_string(),
-        RawValue::Sz(data) => quoted(&escape(data)),
+        RawValue::Sz(data) => quoted(&escape_value(data, format)),
         RawValue::Dword(data) => format!("dword:{:0>8x}", data),
         RawValue::Str { kind, data } => match kind {
-            Kind::Sz => format!("str:{}", quoted(&escape_not_null(data))),
-            kind => format!("str({:x}):{}", u8::from(*kind), quoted(&escape_not_null(data))),
+            Kind::Sz => format!("str:{}", quoted(&escape_value(data, format))),
+            kind => format!("str({:x}):{}", u8::from(*kind), quoted(&escape_value(data, format))),
         },
         RawValue::Hex { kind, bytes } => {
             let mut out = String::new();
@@ -192,6 +218,37 @@ mod tests {
     use pretty_assertions::assert_eq;
     use test_case::test_case;
 
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
+    #[test_case(r#"foo]bar"#, r#"foo]bar"# ; "bracket")]
+    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    fn escape_key_wine2(raw: &str, escaped: &str) {
+        assert_eq!(escaped.to_string(), escape_key(raw, Format::Wine2));
+    }
+
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
+    #[test_case("foo\nbar", "foo\nbar" ; "new line")]
+    #[test_case("foo\rbar", "foo\rbar" ; "carriage return")]
+    #[test_case("foo\0bar", "foo\0bar" ; "null")]
+    #[test_case("fooあbar", "fooあbar" ; "Unicode")]
+    fn escape_value_regedit5(raw: &str, escaped: &str) {
+        assert_eq!(escaped.to_string(), escape_value(raw, Format::Regedit5));
+    }
+
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
+    #[test_case("foo\nbar", r"foo\nbar" ; "new line")]
+    #[test_case("foo\rbar", r"foo\rbar" ; "carriage return")]
+    #[test_case("foo\0bar", r"foo\0bar" ; "null")]
+    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    fn escape_value_wine2(raw: &str, escaped: &str) {
+        assert_eq!(escaped.to_string(), escape_value(raw, Format::Wine2));
+    }
+
     #[test_case("[foo]", "foo", Key::new() ; "add")]
     #[test_case("[-foo]", "foo", Key::Delete ; "delete")]
     #[test_case("[foo] bar", "foo", Key::new().with_addendum("bar".to_string()) ; "addendum")]
@@ -206,7 +263,7 @@ mod tests {
     #[test_case("\"eq=s\"", ValueName::Named("eq=s".to_string()) ; "sz inner equal signs")]
     #[test_case(r#""sp\\ec\"ial""#, ValueName::Named(r#"sp\ec"ial"#.to_string()) ; "sz escaped characters")]
     fn valid_value_names(raw: &str, parsed: ValueName) {
-        assert_eq!(raw.to_string(), value_name(&parsed));
+        assert_eq!(raw.to_string(), value_name(&parsed, Format::Regedit5));
     }
 
     #[test_case("\"foo\"", RawValue::Sz("foo".to_string()) ; "sz simple")]
@@ -225,7 +282,7 @@ mod tests {
     #[test_case("hex(b):01,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![1, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 1")]
     #[test_case("hex(b):ff,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![255, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 255")]
     fn valid_values(raw: &str, parsed: RawValue) {
-        assert_eq!(raw, value(&parsed, 0));
+        assert_eq!(raw, value(&parsed, 0, Format::Regedit5));
     }
 
     #[test_case("#arch=win32", wine::GlobalOption::Arch("win32".to_string()) ; "arch")]

@@ -22,8 +22,47 @@ mod group {
     pub const OTHER: &str = "other";
 }
 
-fn unescape(raw: &str) -> String {
-    raw.replace("\\\\", "\\").replace("\\\"", "\"")
+fn unescape_key(raw: &str, format: Format) -> String {
+    if format.is_wine() {
+        unescape_wine_unicode(&raw.replace(r"\\", r"\"))
+    } else {
+        raw.to_string()
+    }
+}
+
+fn unescape_value(raw: &str, format: Format) -> String {
+    if format.is_wine() {
+        let normalized = raw
+            .replace(r"\\", r"\")
+            .replace(r#"\""#, "\"")
+            .replace(r"\0", "\0")
+            .replace(r"\n", "\n")
+            .replace(r"\r", "\r");
+        unescape_wine_unicode(&normalized)
+    } else {
+        raw.replace(r"\\", r"\").replace(r#"\""#, "\"")
+    }
+}
+
+fn unescape_wine_unicode(raw: &str) -> String {
+    static UNICODE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\\x([0-9a-fA-F]{4})").unwrap());
+
+    UNICODE
+        .replace_all(raw.as_ref(), |captures: &regex::Captures| {
+            macro_rules! fallback {
+                ($x:expr) => {
+                    match $x {
+                        Some(x) => x,
+                        None => return raw.to_string(),
+                    }
+                };
+            }
+
+            let raw_code = fallback!(captures.get(1)).as_str();
+            let code = fallback!(u32::from_str_radix(raw_code, 16).ok());
+            fallback!(char::from_u32(code)).to_string()
+        })
+        .to_string()
 }
 
 /// Normalize reg file content before deserializing.
@@ -66,7 +105,7 @@ pub fn format(raw: &str) -> Result<Format, error::Deserialize> {
     }
 }
 
-pub fn key(raw: &str) -> Option<(KeyName, Key)> {
+pub fn key(raw: &str, format: Format) -> Option<(KeyName, Key)> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r"(?x)
@@ -84,7 +123,7 @@ pub fn key(raw: &str) -> Option<(KeyName, Key)> {
 
     let caps = RE.captures(raw)?;
     let delete = caps.name(group::DELETE).is_some();
-    let name = KeyName::new(caps.name(group::NAME)?.as_str());
+    let name = KeyName::new(unescape_key(caps.name(group::NAME)?.as_str(), format));
     let addendum = caps.name(group::ADDENDUM).map(|x| x.as_str().trim().to_string());
 
     if delete {
@@ -96,7 +135,7 @@ pub fn key(raw: &str) -> Option<(KeyName, Key)> {
     }
 }
 
-pub fn named_value(raw: &str) -> Option<(ValueName, RawValue)> {
+pub fn named_value(raw: &str, format: Format) -> Option<(ValueName, RawValue)> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"(?x)
@@ -113,10 +152,10 @@ pub fn named_value(raw: &str) -> Option<(ValueName, RawValue)> {
     let name = caps.name(group::NAME)?.as_str();
     let data = caps.name(group::DATA)?.as_str();
 
-    Some((value_name(name.trim())?, value(data.trim())?))
+    Some((value_name(name.trim(), format)?, value(data.trim(), format)?))
 }
 
-pub fn value_name(raw: &str) -> Option<ValueName> {
+pub fn value_name(raw: &str, format: Format) -> Option<ValueName> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"(?x)
@@ -132,12 +171,12 @@ pub fn value_name(raw: &str) -> Option<ValueName> {
     if caps.name(group::DEFAULT).is_some() {
         Some(ValueName::Default)
     } else {
-        let name = unescape(caps.name(group::NAME)?.as_str());
+        let name = unescape_value(caps.name(group::NAME)?.as_str(), format);
         Some(ValueName::Named(name))
     }
 }
 
-pub fn value(raw: &str) -> Option<RawValue> {
+pub fn value(raw: &str, format: Format) -> Option<RawValue> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"(?x)
@@ -172,7 +211,7 @@ pub fn value(raw: &str) -> Option<RawValue> {
     if caps.name(group::DELETE).is_some() {
         Some(RawValue::Delete)
     } else if let Some(sz) = caps.name(group::SZ) {
-        Some(RawValue::Sz(unescape(sz.as_str())))
+        Some(RawValue::Sz(unescape_value(sz.as_str(), format)))
     } else if let Some(dword) = caps.name(group::DWORD) {
         let data = u32::from_str_radix(dword.as_str(), 16).ok()?;
         Some(RawValue::Dword(data))
@@ -203,7 +242,9 @@ pub fn value(raw: &str) -> Option<RawValue> {
             _ => return None,
         }
 
-        let data = caps.name(group::STR_DATA).map(|data| data.as_str().to_string())?;
+        let data = caps
+            .name(group::STR_DATA)
+            .map(|data| unescape_value(data.as_str(), format))?;
 
         Some(RawValue::Str { kind, data })
     } else {
@@ -285,6 +326,37 @@ mod tests {
         assert_eq!(output.to_string(), normalize(input))
     }
 
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
+    #[test_case(r#"foo]bar"#, r#"foo]bar"# ; "bracket")]
+    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    fn unescape_key_wine2(unescaped: &str, raw: &str) {
+        assert_eq!(unescaped.to_string(), unescape_key(raw, Format::Wine2));
+    }
+
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
+    #[test_case("foo\nbar", "foo\nbar" ; "new line")]
+    #[test_case("foo\rbar", "foo\rbar" ; "carriage return")]
+    #[test_case("foo\0bar", "foo\0bar" ; "null")]
+    #[test_case("fooあbar", "fooあbar" ; "Unicode")]
+    fn unescape_value_regedit5(unescaped: &str, raw: &str) {
+        assert_eq!(unescaped.to_string(), unescape_value(raw, Format::Regedit5));
+    }
+
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
+    #[test_case("foo\nbar", r"foo\nbar" ; "new line")]
+    #[test_case("foo\rbar", r"foo\rbar" ; "carriage return")]
+    #[test_case("foo\0bar", r"foo\0bar" ; "null")]
+    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    fn unescape_value_wine2(unescaped: &str, raw: &str) {
+        assert_eq!(unescaped.to_string(), unescape_value(raw, Format::Wine2));
+    }
+
     #[test_case("[foo]", "foo", Key::new() ; "simple")]
     #[test_case(" [foo] ", "foo", Key::new() ; "outer spaces")]
     #[test_case("[foo ]", "foo ", Key::new() ; "inner trailing space")]
@@ -293,21 +365,21 @@ mod tests {
     #[test_case(r"[foo\bar]", r"foo\bar", Key::new() ; "one backslash")]
     #[test_case(r"[foo\\bar]", r"foo\bar", Key::new() ; "multiple backslashes")]
     fn valid_keys(raw: &str, name: &str, parsed: Key) {
-        assert_eq!(Some((KeyName(name.to_string()), parsed)), key(raw));
+        assert_eq!(Some((KeyName(name.to_string()), parsed)), key(raw, Format::Regedit5));
     }
 
     #[test_case("[]" ; "blank add key")]
     #[test_case("[-]" ; "blank delete key")]
     #[test_case("[ foo]" ; "inner leading space")]
     fn invalid_keys(raw: &str) {
-        assert_eq!(None, key(raw));
+        assert_eq!(None, key(raw, Format::Regedit5));
     }
 
     #[test_case("@=\"a\"", ValueName::Default, RawValue::Sz("a".to_string()) ; "simple")]
     #[test_case("  @ = \"b\" ", ValueName::Default, RawValue::Sz("b".to_string()) ; "whitespace")]
     #[test_case("\"eq=s\"=\"EQ=S\"", ValueName::Named("eq=s".to_string()), RawValue::Sz("EQ=S".to_string()) ; "quoted equal signs")]
     fn valid_named_values(raw: &str, name: ValueName, parsed: RawValue) {
-        assert_eq!(Some((name, parsed)), named_value(raw));
+        assert_eq!(Some((name, parsed)), named_value(raw, Format::Regedit5));
     }
 
     #[test_case("@", ValueName::Default ; "default")]
@@ -316,7 +388,7 @@ mod tests {
     #[test_case("\"eq=s\"", ValueName::Named("eq=s".to_string()) ; "sz inner equal signs")]
     #[test_case(r#""sp\\ec\"ial""#, ValueName::Named(r#"sp\ec"ial"#.to_string()) ; "sz escaped characters")]
     fn valid_value_names(raw: &str, parsed: ValueName) {
-        assert_eq!(Some(parsed), value_name(raw));
+        assert_eq!(Some(parsed), value_name(raw, Format::Regedit5));
     }
 
     #[test_case("\"foo\"", RawValue::Sz("foo".to_string()) ; "sz simple")]
@@ -335,12 +407,12 @@ mod tests {
     #[test_case("hex(b):01,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![1, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 1")]
     #[test_case("hex(b):ff,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![255, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 255")]
     fn valid_values(raw: &str, parsed: RawValue) {
-        assert_eq!(Some(parsed), value(raw));
+        assert_eq!(Some(parsed), value(raw, Format::Regedit5));
     }
 
     #[test_case("str(0):\"foo\"" ; "str invalid")]
     fn invalid_values(raw: &str) {
-        assert_eq!(None, value(raw));
+        assert_eq!(None, value(raw, Format::Regedit5));
     }
 
     #[test_case("#arch=win32", wine::GlobalOption::Arch("win32".to_string()) ; "arch")]

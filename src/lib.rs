@@ -231,7 +231,7 @@ impl Registry {
                 }
             }
 
-            if let Some((name, key)) = deserialize::key(line) {
+            if let Some((name, key)) = deserialize::key(line, out.format) {
                 if let (Some(n), Some(k)) = (current_key_name, current_key) {
                     out.update(n, k);
                 }
@@ -248,7 +248,7 @@ impl Registry {
                 }
             }
 
-            if let Some((name, value)) = deserialize::named_value(line) {
+            if let Some((name, value)) = deserialize::named_value(line, out.format) {
                 if let Some(key) = &mut current_key {
                     key.update(name, Value::from_raw(value, out.format));
                 }
@@ -580,7 +580,7 @@ impl Value {
                 match kind {
                     Kind::Sz => Self::Sz(data),
                     Kind::ExpandSz => Self::ExpandSz(data),
-                    Kind::MultiSz => Self::MultiSz(data.split("\\0").map(|x| x.to_string()).collect()),
+                    Kind::MultiSz => Self::MultiSz(data.split('\0').map(|x| x.to_string()).collect()),
                     _ => Self::Delete, // Invalid
                 }
             }
@@ -673,7 +673,7 @@ impl Value {
                         RawValue::Sz(x)
                     }
                 }
-                Format::Regedit4 | Format::Wine2 => {
+                Format::Regedit4 => {
                     if x.contains(etc::SZ_INVALID_CHARS) {
                         RawValue::Hex {
                             kind: Kind::Sz,
@@ -684,6 +684,7 @@ impl Value {
                         RawValue::Sz(ascii)
                     }
                 }
+                Format::Wine2 => RawValue::Sz(x),
             },
             Value::ExpandSz(x) => match format {
                 Format::Regedit5 => RawValue::Hex {
@@ -712,7 +713,7 @@ impl Value {
                 if format.is_wine() {
                     return RawValue::Str {
                         kind: Kind::MultiSz,
-                        data: xs.join("\\0"),
+                        data: xs.join("\0"),
                     };
                 }
 
@@ -1225,6 +1226,10 @@ Windows Registry Editor Version 5.00
                     .with("sz-str", Value::Sz("x".to_string())),
             )
             .with(
+                r"Software\regashii\日本語",
+                Key::new().with("sz-あ", Value::Sz("あ".to_string())),
+            )
+            .with(
                 r"Software\regashii\wine-link",
                 Key::new()
                     .with_wine_option(wine::KeyOption::Link)
@@ -1252,6 +1257,9 @@ WINE REGISTRY Version 2
 [Software\\regashii\\wine-link]
 #link
 "SymbolicLinkValue"="foo"
+
+[Software\\regashii\\\x65e5\x672c\x8a9e]
+"sz-\x3042"="\x3042"
 "#
             .trim_start(),
             deserialized.serialize()
