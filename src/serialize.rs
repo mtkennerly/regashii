@@ -10,6 +10,10 @@ fn escape(raw: &str) -> String {
     raw.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn escape_not_null(raw: &str) -> String {
+    raw.replace('\\', "\\\\").replace('"', "\\\"").replace("\\\\0", "\\0")
+}
+
 pub fn format(format: Format) -> &'static str {
     match format {
         Format::Regedit5 => Format::REGEDIT5,
@@ -18,8 +22,15 @@ pub fn format(format: Format) -> &'static str {
     }
 }
 
-pub fn key_name(name: &KeyName, addendum: Option<&String>) -> String {
-    let name = &name.0;
+pub fn key_name(name: &KeyName, format: Format) -> String {
+    match format {
+        Format::Regedit5 | Format::Regedit4 => name.0.clone(),
+        Format::Wine2 => name.0.replace('\\', "\\\\"),
+    }
+}
+
+pub fn key_added(name: &KeyName, addendum: Option<&String>, format: Format) -> String {
+    let name = key_name(name, format);
 
     match addendum {
         Some(addendum) => format!("[{name}] {addendum}"),
@@ -27,19 +38,20 @@ pub fn key_name(name: &KeyName, addendum: Option<&String>) -> String {
     }
 }
 
-pub fn key_name_deleted(name: &KeyName) -> String {
-    format!("[-{}]", name.0)
+pub fn key_deleted(name: &KeyName, format: Format) -> String {
+    let name = key_name(name, format);
+    format!("[-{name}]")
 }
 
 pub fn key(name: &KeyName, key: &Key, format: Format) -> String {
     match key {
-        Key::Delete => key_name_deleted(name),
+        Key::Delete => key_deleted(name, format),
         Key::Add {
             values,
             addendum,
             wine_options,
         } => {
-            let mut lines = vec![key_name(name, addendum.as_ref())];
+            let mut lines = vec![key_added(name, addendum.as_ref(), format)];
 
             if format.is_wine() {
                 lines.extend(wine_key_options(wine_options));
@@ -60,9 +72,9 @@ pub fn key(name: &KeyName, key: &Key, format: Format) -> String {
             wine_options,
         } => {
             let mut lines = vec![
-                key_name_deleted(name),
+                key_deleted(name, format),
                 "".to_string(),
-                key_name(name, addendum.as_ref()),
+                key_added(name, addendum.as_ref(), format),
             ];
 
             if format.is_wine() {
@@ -106,8 +118,8 @@ pub fn value(value: &RawValue, offset: usize) -> String {
         RawValue::Sz(data) => quoted(&escape(data)),
         RawValue::Dword(data) => format!("dword:{:0>8x}", data),
         RawValue::Str { kind, data } => match kind {
-            Kind::Sz => format!("str:{}", quoted(&escape(data))),
-            kind => format!("str({:x}):{}", u8::from(*kind), quoted(&escape(data))),
+            Kind::Sz => format!("str:{}", quoted(&escape_not_null(data))),
+            kind => format!("str({:x}):{}", u8::from(*kind), quoted(&escape_not_null(data))),
         },
         RawValue::Hex { kind, bytes } => {
             let mut out = String::new();
@@ -183,11 +195,10 @@ mod tests {
     #[test_case("[foo]", "foo", Key::new() ; "add")]
     #[test_case("[-foo]", "foo", Key::Delete ; "delete")]
     #[test_case("[foo] bar", "foo", Key::new().with_addendum("bar".to_string()) ; "addendum")]
+    #[test_case(r"[foo\bar]", r"foo\bar", Key::new() ; "one backslash")]
+    #[test_case(r"[foo\bar]", r"foo\\bar", Key::new() ; "multiple backslashes")]
     fn valid_keys(raw: &str, name: &str, parsed: Key) {
-        assert_eq!(
-            raw.to_string(),
-            key(&KeyName(name.to_string()), &parsed, Format::Regedit5)
-        );
+        assert_eq!(raw.to_string(), key(&KeyName::new(name), &parsed, Format::Regedit5));
     }
 
     #[test_case("@", ValueName::Default ; "default")]
@@ -223,7 +234,7 @@ mod tests {
         assert_eq!(raw, wine_global_option(&parsed));
     }
 
-    #[test_case("#time=100", wine::KeyOption::Time(100) ; "time")]
+    #[test_case("#time=1f", wine::KeyOption::Time("1f".to_string()) ; "time")]
     #[test_case("#class=\"foo\"", wine::KeyOption::Class("foo".to_string()) ; "class")]
     #[test_case("#link", wine::KeyOption::Link ; "link")]
     #[test_case("#foo", wine::KeyOption::Other("foo".to_string()) ; "other")]

@@ -2,17 +2,17 @@ WINE REGISTRY Version 2
 ;; All keys relative to HKEY_CURRENT_USER
 #arch=win32
 
-[Software\regashii\wine] 100
-#time=200
+[Software\\regashii\\wine] 1729718050
+#time=1db259080cb98c4
 #class="foo"
 @="default"
 "binary-a"=hex:61
 "dword-1"=dword:00000001
 "expand-sz-a"=str(2):"a"
-"multi-sz-a"=str(7):"a"
+"multi-sz-a-b"=str(7):"a\0b"
 "sz-a"="a"
 "sz-str"=str:"x"
 
-[Software\regashii\wine-link]
+[Software\\regashii\\wine-link]
 #link
 "SymbolicLinkValue"="foo"

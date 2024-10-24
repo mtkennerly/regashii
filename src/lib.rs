@@ -580,7 +580,7 @@ impl Value {
                 match kind {
                     Kind::Sz => Self::Sz(data),
                     Kind::ExpandSz => Self::ExpandSz(data),
-                    Kind::MultiSz => Self::MultiSz(vec![data]),
+                    Kind::MultiSz => Self::MultiSz(data.split("\\0").map(|x| x.to_string()).collect()),
                     _ => Self::Delete, // Invalid
                 }
             }
@@ -690,10 +690,13 @@ impl Value {
                     kind: Kind::ExpandSz,
                     bytes: etc::str_to_utf16_bytes(&x),
                 },
-                // TODO: Should Wine use `RawValue::Str`?
-                Format::Regedit4 | Format::Wine2 => RawValue::Hex {
+                Format::Regedit4 => RawValue::Hex {
                     kind: Kind::ExpandSz,
                     bytes: etc::str_to_ascii_bytes(&x),
+                },
+                Format::Wine2 => RawValue::Str {
+                    kind: Kind::ExpandSz,
+                    data: x,
                 },
             },
             Value::Binary(bytes) => RawValue::Hex {
@@ -706,6 +709,13 @@ impl Value {
                 bytes: x.to_be_bytes().to_vec(),
             },
             Value::MultiSz(xs) => {
+                if format.is_wine() {
+                    return RawValue::Str {
+                        kind: Kind::MultiSz,
+                        data: xs.join("\\0"),
+                    };
+                }
+
                 let mut bytes = vec![];
 
                 for x in xs {
@@ -717,9 +727,10 @@ impl Value {
                         Format::Regedit5 => {
                             bytes.extend(etc::str_to_utf16_bytes(&x));
                         }
-                        Format::Regedit4 | Format::Wine2 => {
+                        Format::Regedit4 => {
                             bytes.extend(etc::str_to_ascii_bytes(&x));
                         }
+                        Format::Wine2 => unreachable!(),
                     }
                 }
 
@@ -728,12 +739,12 @@ impl Value {
                         bytes.push(0);
                         bytes.push(0);
                     }
-                    Format::Regedit4 | Format::Wine2 => {
+                    Format::Regedit4 => {
                         bytes.push(0);
                     }
+                    Format::Wine2 => unreachable!(),
                 }
 
-                // TODO: Should Wine use `RawValue::Str`?
                 RawValue::Hex {
                     kind: Kind::MultiSz,
                     bytes,
@@ -1202,13 +1213,13 @@ Windows Registry Editor Version 5.00
             .with(
                 r"Software\regashii\wine",
                 Key::new()
-                    .with_addendum("100".to_string())
-                    .with_wine_option(wine::KeyOption::Time(200))
+                    .with_addendum("1729718050".to_string())
+                    .with_wine_option(wine::KeyOption::Time("1db259080cb98c4".to_string()))
                     .with_wine_option(wine::KeyOption::Class("foo".to_string()))
                     .with(ValueName::Default, Value::Sz("default".to_string()))
                     .with("binary-a", Value::Binary(vec![0x61]))
                     .with("dword-1", Value::Dword(1))
-                    .with("multi-sz-a", Value::MultiSz(vec!["a".to_string()]))
+                    .with("multi-sz-a-b", Value::MultiSz(vec!["a".to_string(), "b".to_string()]))
                     .with("expand-sz-a", Value::ExpandSz("a".to_string()))
                     .with("sz-a", Value::Sz("a".to_string()))
                     .with("sz-str", Value::Sz("x".to_string())),
@@ -1227,18 +1238,18 @@ Windows Registry Editor Version 5.00
 WINE REGISTRY Version 2
 #arch=win32
 
-[Software\regashii\wine] 100
-#time=200
+[Software\\regashii\\wine] 1729718050
+#time=1db259080cb98c4
 #class="foo"
 @="default"
 "binary-a"=hex:61
 "dword-1"=dword:00000001
-"expand-sz-a"=hex(2):61,00
-"multi-sz-a"=hex(7):61,00,00
+"expand-sz-a"=str(2):"a"
+"multi-sz-a-b"=str(7):"a\0b"
 "sz-a"="a"
 "sz-str"="x"
 
-[Software\regashii\wine-link]
+[Software\\regashii\\wine-link]
 #link
 "SymbolicLinkValue"="foo"
 "#

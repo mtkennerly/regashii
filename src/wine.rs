@@ -10,7 +10,7 @@ pub enum GlobalOption {
 /// These are represented as lines beginning with `#`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum KeyOption {
-    Time(u64),
+    Time(String),
     Class(String),
     Link,
     Other(String),

@@ -243,7 +243,7 @@ pub fn wine_key_option(raw: &str) -> Option<wine::KeyOption> {
             ^
             \#(
                 class="(?P<class> [^"]+)"
-                | time=(?P<time> \d+)
+                | time=(?P<time> [0-9a-fA-F]+)
                 | (?P<link> link)
                 | (?P<other> .+)
             )
@@ -258,8 +258,7 @@ pub fn wine_key_option(raw: &str) -> Option<wine::KeyOption> {
     if let Some(class) = caps.name(group::CLASS) {
         Some(wine::KeyOption::Class(class.as_str().to_string()))
     } else if let Some(time) = caps.name(group::TIME) {
-        let parsed: u64 = time.as_str().parse().ok()?;
-        Some(wine::KeyOption::Time(parsed))
+        Some(wine::KeyOption::Time(time.as_str().to_string()))
     } else if caps.name(group::LINK).is_some() {
         Some(wine::KeyOption::Link)
     } else {
@@ -350,7 +349,7 @@ mod tests {
         assert_eq!(Some(parsed), wine_global_option(raw));
     }
 
-    #[test_case("#time=100", wine::KeyOption::Time(100) ; "time")]
+    #[test_case("#time=1f", wine::KeyOption::Time("1f".to_string()) ; "time")]
     #[test_case("#class=\"foo\"", wine::KeyOption::Class("foo".to_string()) ; "class")]
     #[test_case("#link", wine::KeyOption::Link ; "link")]
     #[test_case("#foo", wine::KeyOption::Other("foo".to_string()) ; "other")]
