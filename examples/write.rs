@@ -1,3 +1,5 @@
+//! This example creates a new registry file.
+
 use regashii::{error, Format, Key, Kind, Registry, Value, ValueName};
 
 fn main() -> Result<(), error::Write> {

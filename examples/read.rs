@@ -1,3 +1,5 @@
+//! This example reads a registry file and prints some of its content.
+
 use regashii::{error, Key, Registry};
 
 fn main() -> Result<(), error::Read> {
