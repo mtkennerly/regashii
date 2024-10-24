@@ -11,6 +11,9 @@ use std::{
     path::Path,
 };
 
+use once_cell::sync::Lazy;
+use regex::Regex;
+
 /// Main struct for all *.reg file content.
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Registry {
@@ -57,12 +60,11 @@ impl Registry {
     /// Will try to reuse an equivalent existing key name, if any.
     pub fn update(&mut self, requested_name: KeyName, key: Key) {
         let lookup = self.key_name(&requested_name);
-        let normalized = || KeyName(requested_name.0.trim_end_matches('\\').to_string());
 
         if let Some(stored) = self.keys.remove(&lookup) {
             match (stored, key) {
                 (_, Key::Delete) => {
-                    self.keys.insert(normalized(), Key::Delete);
+                    self.keys.insert(requested_name, Key::Delete);
                 }
                 (
                     Key::Delete,
@@ -78,7 +80,7 @@ impl Registry {
                     },
                 ) => {
                     self.keys.insert(
-                        normalized(),
+                        requested_name,
                         Key::Replace {
                             values,
                             wine_options,
@@ -181,21 +183,19 @@ impl Registry {
     /// but whitespace is significant.
     pub fn key_name(&self, requested: &KeyName) -> KeyName {
         if self.keys.contains_key(requested) {
-            return KeyName(requested.0.to_string());
+            return requested.clone();
         }
 
-        let normalized = requested.0.trim_end_matches('\\');
-        let normalized_lower = normalized.to_lowercase();
+        let requested_lower = requested.0.to_lowercase();
 
         for key in self.keys.keys() {
-            let n = key.0.trim_end_matches('\\');
-            let nl = n.to_lowercase();
-            if normalized_lower == nl {
-                return KeyName(n.to_string());
+            let stored_lower = key.0.to_lowercase();
+            if requested_lower == stored_lower {
+                return key.clone();
             }
         }
 
-        KeyName(normalized.to_string())
+        requested.clone()
     }
 
     /// Read a *.reg file.
@@ -322,17 +322,32 @@ impl Format {
 
 /// A registry key name.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct KeyName(pub String);
+pub struct KeyName(String);
+
+impl KeyName {
+    /// This will normalize multiple consecutive backslashes to a single backslash,
+    /// and it will remove any trailing backslashes.
+    pub fn new(raw: impl AsRef<str>) -> Self {
+        static BACKSLASHES: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\\{2,})").unwrap());
+
+        let normalized = BACKSLASHES
+            .replace_all(raw.as_ref(), "\\")
+            .trim_end_matches('\\')
+            .to_string();
+
+        Self(normalized)
+    }
+}
 
 impl From<String> for KeyName {
     fn from(value: String) -> Self {
-        Self(value)
+        Self::new(value)
     }
 }
 
 impl From<&str> for KeyName {
     fn from(value: &str) -> Self {
-        Self(value.to_string())
+        Self::new(value)
     }
 }
 
@@ -798,6 +813,14 @@ impl From<Kind> for u8 {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn key_name() {
+        assert_eq!(KeyName(r"foo".to_string()), KeyName::new(r"foo"));
+        assert_eq!(KeyName(r"foo".to_string()), KeyName::new(r"foo\"));
+        assert_eq!(KeyName(r"foo\bar".to_string()), KeyName::new(r"foo\bar"));
+        assert_eq!(KeyName(r"foo\bar".to_string()), KeyName::new(r"foo\\bar"));
+    }
 
     #[test]
     fn simple_regedit5() {

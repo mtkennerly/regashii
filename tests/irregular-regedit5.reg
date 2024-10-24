@@ -1,6 +1,6 @@
 Windows Registry Editor Version 5.00 ;blah
 
-[HKEY_CURRENT_USER\Software\regashii\irregular] addendum ; blah
+[HKEY_CURRENT_USER\Software\regashii\\irregular] addendum ; blah
 "dword"=hex(4):00
 "sz-line-break"=hex(1):61,00,0a,00,62,00,00,00
 "hex-continuations"=hex:00,\

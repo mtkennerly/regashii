@@ -7,6 +7,8 @@
     This includes Wine's global options (e.g., `#arch=win32`),
     key-level options (e.g., `#link`),
     and string values written as `"name"=str:"data"`.
+* Fixed:
+  * Extra backslashes in key paths are now ignored and normalized.
 * Changed:
   * The variants of `Key` now name their fields.
   * Values serialized as hexadecimal bytes (e.g., `Kind::Binary`)

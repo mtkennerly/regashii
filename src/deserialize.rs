@@ -84,7 +84,7 @@ pub fn key(raw: &str) -> Option<(KeyName, Key)> {
 
     let caps = RE.captures(raw)?;
     let delete = caps.name(group::DELETE).is_some();
-    let name = KeyName(caps.name(group::NAME)?.as_str().to_string());
+    let name = KeyName::new(caps.name(group::NAME)?.as_str());
     let addendum = caps.name(group::ADDENDUM).map(|x| x.as_str().trim().to_string());
 
     if delete {
@@ -291,6 +291,8 @@ mod tests {
     #[test_case("[foo ]", "foo ", Key::new() ; "inner trailing space")]
     #[test_case("[[baz]]", "[baz]", Key::new() ; "extra brackets")]
     #[test_case("[foo] bar ; baz", "foo", Key::new().with_addendum("bar".to_string()) ; "ignored comment")]
+    #[test_case(r"[foo\bar]", r"foo\bar", Key::new() ; "one backslash")]
+    #[test_case(r"[foo\\bar]", r"foo\bar", Key::new() ; "multiple backslashes")]
     fn valid_keys(raw: &str, name: &str, parsed: Key) {
         assert_eq!(Some((KeyName(name.to_string()), parsed)), key(raw));
     }
