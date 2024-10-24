@@ -1,4 +1,4 @@
-use crate::{error, Format, Key, KeyName, Kind, RawValue, ValueName, WineGlobalOption, WineKeyOption};
+use crate::{error, wine, Format, Key, KeyName, Kind, RawValue, ValueName};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -211,7 +211,7 @@ pub fn value(raw: &str) -> Option<RawValue> {
     }
 }
 
-pub fn wine_global_option(raw: &str) -> Option<WineGlobalOption> {
+pub fn wine_global_option(raw: &str) -> Option<wine::GlobalOption> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"(?x)
@@ -229,14 +229,14 @@ pub fn wine_global_option(raw: &str) -> Option<WineGlobalOption> {
     let caps = RE.captures(raw)?;
 
     if let Some(arch) = caps.name(group::ARCH) {
-        Some(WineGlobalOption::Arch(arch.as_str().to_string()))
+        Some(wine::GlobalOption::Arch(arch.as_str().to_string()))
     } else {
         caps.name(group::OTHER)
-            .map(|other| WineGlobalOption::Other(other.as_str().to_string()))
+            .map(|other| wine::GlobalOption::Other(other.as_str().to_string()))
     }
 }
 
-pub fn wine_key_option(raw: &str) -> Option<WineKeyOption> {
+pub fn wine_key_option(raw: &str) -> Option<wine::KeyOption> {
     static RE: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"(?x)
@@ -256,15 +256,15 @@ pub fn wine_key_option(raw: &str) -> Option<WineKeyOption> {
     let caps = RE.captures(raw)?;
 
     if let Some(class) = caps.name(group::CLASS) {
-        Some(WineKeyOption::Class(class.as_str().to_string()))
+        Some(wine::KeyOption::Class(class.as_str().to_string()))
     } else if let Some(time) = caps.name(group::TIME) {
         let parsed: u64 = time.as_str().parse().ok()?;
-        Some(WineKeyOption::Time(parsed))
+        Some(wine::KeyOption::Time(parsed))
     } else if caps.name(group::LINK).is_some() {
-        Some(WineKeyOption::Link)
+        Some(wine::KeyOption::Link)
     } else {
         caps.name(group::OTHER)
-            .map(|other| WineKeyOption::Other(other.as_str().to_string()))
+            .map(|other| wine::KeyOption::Other(other.as_str().to_string()))
     }
 }
 
@@ -342,17 +342,17 @@ mod tests {
         assert_eq!(None, value(raw));
     }
 
-    #[test_case("#arch=win32", WineGlobalOption::Arch("win32".to_string()) ; "arch")]
-    #[test_case("#foo", WineGlobalOption::Other("foo".to_string()) ; "other")]
-    fn valid_wine_global_options(raw: &str, parsed: WineGlobalOption) {
+    #[test_case("#arch=win32", wine::GlobalOption::Arch("win32".to_string()) ; "arch")]
+    #[test_case("#foo", wine::GlobalOption::Other("foo".to_string()) ; "other")]
+    fn valid_wine_global_options(raw: &str, parsed: wine::GlobalOption) {
         assert_eq!(Some(parsed), wine_global_option(raw));
     }
 
-    #[test_case("#time=100", WineKeyOption::Time(100) ; "time")]
-    #[test_case("#class=\"foo\"", WineKeyOption::Class("foo".to_string()) ; "class")]
-    #[test_case("#link", WineKeyOption::Link ; "link")]
-    #[test_case("#foo", WineKeyOption::Other("foo".to_string()) ; "other")]
-    fn valid_wine_key_options(raw: &str, parsed: WineKeyOption) {
+    #[test_case("#time=100", wine::KeyOption::Time(100) ; "time")]
+    #[test_case("#class=\"foo\"", wine::KeyOption::Class("foo".to_string()) ; "class")]
+    #[test_case("#link", wine::KeyOption::Link ; "link")]
+    #[test_case("#foo", wine::KeyOption::Other("foo".to_string()) ; "other")]
+    fn valid_wine_key_options(raw: &str, parsed: wine::KeyOption) {
         assert_eq!(Some(parsed), wine_key_option(raw));
     }
 }

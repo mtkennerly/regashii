@@ -4,6 +4,7 @@ mod deserialize;
 pub mod error;
 mod etc;
 mod serialize;
+pub mod wine;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -15,7 +16,7 @@ use std::{
 pub struct Registry {
     format: Format,
     keys: BTreeMap<KeyName, Key>,
-    wine_options: BTreeSet<WineGlobalOption>,
+    wine_options: BTreeSet<wine::GlobalOption>,
 }
 
 impl Registry {
@@ -35,7 +36,7 @@ impl Registry {
     }
 
     /// Add a Wine option (method chain style).
-    pub fn with_wine_option(mut self, option: WineGlobalOption) -> Self {
+    pub fn with_wine_option(mut self, option: wine::GlobalOption) -> Self {
         self.wine_options.insert(option);
         self
     }
@@ -166,12 +167,12 @@ impl Registry {
     }
 
     /// Access the Wine options.
-    pub fn wine_options(&self) -> &BTreeSet<WineGlobalOption> {
+    pub fn wine_options(&self) -> &BTreeSet<wine::GlobalOption> {
         &self.wine_options
     }
 
     /// Access the Wine options mutably.
-    pub fn wine_options_mut(&mut self) -> &mut BTreeSet<WineGlobalOption> {
+    pub fn wine_options_mut(&mut self) -> &mut BTreeSet<wine::GlobalOption> {
         &mut self.wine_options
     }
 
@@ -346,7 +347,7 @@ pub enum Key {
         /// Any extra content after the key name's closing bracket.
         /// Wine uses this to store the modified time.
         addendum: Option<String>,
-        wine_options: BTreeSet<WineKeyOption>,
+        wine_options: BTreeSet<wine::KeyOption>,
     },
     /// This key should be first deleted and then added to the registry.
     Replace {
@@ -354,7 +355,7 @@ pub enum Key {
         /// Any extra content after the key name's closing bracket.
         /// Wine uses this to store the modified time.
         addendum: Option<String>,
-        wine_options: BTreeSet<WineKeyOption>,
+        wine_options: BTreeSet<wine::KeyOption>,
     },
 }
 
@@ -404,7 +405,7 @@ impl Key {
 
     /// Add a Wine option (method chain style).
     /// Does nothing for `Key::Delete`.
-    pub fn with_wine_option(mut self, option: WineKeyOption) -> Self {
+    pub fn with_wine_option(mut self, option: wine::KeyOption) -> Self {
         match &mut self {
             Key::Delete => {}
             Key::Add { wine_options, .. } | Key::Replace { wine_options, .. } => {
@@ -449,7 +450,7 @@ impl Key {
 
     /// Add a Wine option.
     /// Does nothing for `Key::Delete`.
-    pub fn add_wine_option(&mut self, option: WineKeyOption) {
+    pub fn add_wine_option(&mut self, option: wine::KeyOption) {
         match self {
             Key::Delete => {}
             Key::Add { wine_options, .. } | Key::Replace { wine_options, .. } => {
@@ -791,24 +792,6 @@ impl From<Kind> for u8 {
             Kind::Unknown(x) => x,
         }
     }
-}
-
-/// Wine global options.
-/// These are represented as lines beginning with `#`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum WineGlobalOption {
-    Arch(String),
-    Other(String),
-}
-
-/// Wine key-level options.
-/// These are represented as lines beginning with `#`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum WineKeyOption {
-    Time(u64),
-    Class(String),
-    Link,
-    Other(String),
 }
 
 #[cfg(test)]
@@ -1192,13 +1175,13 @@ Windows Registry Editor Version 5.00
         let registry = Registry::deserialize_file("tests/wine-v2.reg").unwrap();
 
         let deserialized = Registry::new(Format::Wine2)
-            .with_wine_option(WineGlobalOption::Arch("win32".to_string()))
+            .with_wine_option(wine::GlobalOption::Arch("win32".to_string()))
             .with(
                 r"Software\regashii\wine",
                 Key::new()
                     .with_addendum("100".to_string())
-                    .with_wine_option(WineKeyOption::Time(200))
-                    .with_wine_option(WineKeyOption::Class("foo".to_string()))
+                    .with_wine_option(wine::KeyOption::Time(200))
+                    .with_wine_option(wine::KeyOption::Class("foo".to_string()))
                     .with(ValueName::Default, Value::Sz("default".to_string()))
                     .with("binary-a", Value::Binary(vec![0x61]))
                     .with("dword-1", Value::Dword(1))
@@ -1210,7 +1193,7 @@ Windows Registry Editor Version 5.00
             .with(
                 r"Software\regashii\wine-link",
                 Key::new()
-                    .with_wine_option(WineKeyOption::Link)
+                    .with_wine_option(wine::KeyOption::Link)
                     .with("SymbolicLinkValue", Value::Sz("foo".to_string())),
             );
 

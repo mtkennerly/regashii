@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{Format, Key, KeyName, Kind, RawValue, ValueName, WineGlobalOption, WineKeyOption};
+use crate::{wine, Format, Key, KeyName, Kind, RawValue, ValueName};
 
 fn quoted(raw: &str) -> String {
     format!("\"{raw}\"")
@@ -138,7 +138,7 @@ pub fn value(value: &RawValue, offset: usize) -> String {
     }
 }
 
-pub fn wine_global_options(options: &BTreeSet<WineGlobalOption>) -> Vec<String> {
+pub fn wine_global_options(options: &BTreeSet<wine::GlobalOption>) -> Vec<String> {
     let mut lines = vec![];
 
     for option in options {
@@ -148,14 +148,14 @@ pub fn wine_global_options(options: &BTreeSet<WineGlobalOption>) -> Vec<String> 
     lines
 }
 
-pub fn wine_global_option(option: &WineGlobalOption) -> String {
+pub fn wine_global_option(option: &wine::GlobalOption) -> String {
     match option {
-        WineGlobalOption::Arch(arch) => format!("#arch={arch}"),
-        WineGlobalOption::Other(other) => format!("#{other}"),
+        wine::GlobalOption::Arch(arch) => format!("#arch={arch}"),
+        wine::GlobalOption::Other(other) => format!("#{other}"),
     }
 }
 
-pub fn wine_key_options(options: &BTreeSet<WineKeyOption>) -> Vec<String> {
+pub fn wine_key_options(options: &BTreeSet<wine::KeyOption>) -> Vec<String> {
     let mut lines = vec![];
 
     for option in options {
@@ -165,12 +165,12 @@ pub fn wine_key_options(options: &BTreeSet<WineKeyOption>) -> Vec<String> {
     lines
 }
 
-pub fn wine_key_option(option: &WineKeyOption) -> String {
+pub fn wine_key_option(option: &wine::KeyOption) -> String {
     match option {
-        WineKeyOption::Class(class) => format!("#class=\"{class}\""),
-        WineKeyOption::Time(time) => format!("#time={time}"),
-        WineKeyOption::Link => "#link".to_string(),
-        WineKeyOption::Other(other) => format!("#{other}"),
+        wine::KeyOption::Class(class) => format!("#class=\"{class}\""),
+        wine::KeyOption::Time(time) => format!("#time={time}"),
+        wine::KeyOption::Link => "#link".to_string(),
+        wine::KeyOption::Other(other) => format!("#{other}"),
     }
 }
 
@@ -217,17 +217,17 @@ mod tests {
         assert_eq!(raw, value(&parsed, 0));
     }
 
-    #[test_case("#arch=win32", WineGlobalOption::Arch("win32".to_string()) ; "arch")]
-    #[test_case("#foo", WineGlobalOption::Other("foo".to_string()) ; "other")]
-    fn valid_wine_global_options(raw: &str, parsed: WineGlobalOption) {
+    #[test_case("#arch=win32", wine::GlobalOption::Arch("win32".to_string()) ; "arch")]
+    #[test_case("#foo", wine::GlobalOption::Other("foo".to_string()) ; "other")]
+    fn valid_wine_global_options(raw: &str, parsed: wine::GlobalOption) {
         assert_eq!(raw, wine_global_option(&parsed));
     }
 
-    #[test_case("#time=100", WineKeyOption::Time(100) ; "time")]
-    #[test_case("#class=\"foo\"", WineKeyOption::Class("foo".to_string()) ; "class")]
-    #[test_case("#link", WineKeyOption::Link ; "link")]
-    #[test_case("#foo", WineKeyOption::Other("foo".to_string()) ; "other")]
-    fn valid_wine_key_options(raw: &str, parsed: WineKeyOption) {
+    #[test_case("#time=100", wine::KeyOption::Time(100) ; "time")]
+    #[test_case("#class=\"foo\"", wine::KeyOption::Class("foo".to_string()) ; "class")]
+    #[test_case("#link", wine::KeyOption::Link ; "link")]
+    #[test_case("#foo", wine::KeyOption::Other("foo".to_string()) ; "other")]
+    fn valid_wine_key_options(raw: &str, parsed: wine::KeyOption) {
         assert_eq!(raw, wine_key_option(&parsed));
     }
 }
