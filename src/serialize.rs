@@ -10,7 +10,7 @@ fn escape_key(raw: &str, format: Format) -> String {
     match format {
         Format::Regedit5 | Format::Regedit4 => raw.to_string(),
         Format::Wine2 => {
-            let escaped = raw.replace('\\', r"\\");
+            let escaped = raw.replace('\\', r"\\").replace('[', r"\[").replace(']', r"\]");
             escape_wine_unicode(&escaped)
         }
     }
@@ -221,7 +221,7 @@ mod tests {
     #[test_case("", "" ; "empty")]
     #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
     #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
-    #[test_case(r#"foo]bar"#, r#"foo]bar"# ; "bracket")]
+    #[test_case(r#"fo[o]bar"#, r#"fo\[o\]bar"# ; "bracket")]
     #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
     fn escape_key_wine2(raw: &str, escaped: &str) {
         assert_eq!(escaped.to_string(), escape_key(raw, Format::Wine2));

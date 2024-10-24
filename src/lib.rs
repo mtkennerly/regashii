@@ -1230,6 +1230,10 @@ Windows Registry Editor Version 5.00
                 Key::new().with("sz-あ", Value::Sz("あ".to_string())),
             )
             .with(
+                r"Software\regashii\wine-br[a]cket",
+                Key::new().with(ValueName::Default, Value::Sz("test".to_string())),
+            )
+            .with(
                 r"Software\regashii\wine-link",
                 Key::new()
                     .with_wine_option(wine::KeyOption::Link)
@@ -1253,6 +1257,9 @@ WINE REGISTRY Version 2
 "multi-sz-a-b"=str(7):"a\0b"
 "sz-a"="a"
 "sz-str"="x"
+
+[Software\\regashii\\wine-br\[a\]cket]
+@="test"
 
 [Software\\regashii\\wine-link]
 #link

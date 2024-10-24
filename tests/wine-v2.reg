@@ -16,6 +16,9 @@ WINE REGISTRY Version 2
 [Software\\regashii\\\x65e5\x672c\x8a9e]
 "sz-\x3042"="\x3042"
 
+[Software\\regashii\\wine-br\[a\]cket]
+@="test"
+
 [Software\\regashii\\wine-link]
 #link
 "SymbolicLinkValue"="foo"

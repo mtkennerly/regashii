@@ -24,7 +24,7 @@ mod group {
 
 fn unescape_key(raw: &str, format: Format) -> String {
     if format.is_wine() {
-        unescape_wine_unicode(&raw.replace(r"\\", r"\"))
+        unescape_wine_unicode(&raw.replace(r"\\", r"\").replace(r"\[", "[").replace(r"\]", "]"))
     } else {
         raw.to_string()
     }
@@ -334,7 +334,7 @@ mod tests {
     #[test_case("", "" ; "empty")]
     #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
     #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
-    #[test_case(r#"foo]bar"#, r#"foo]bar"# ; "bracket")]
+    #[test_case(r#"fo[o]bar"#, r#"fo\[o\]bar"# ; "bracket")]
     #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
     fn unescape_key_wine2(unescaped: &str, raw: &str) {
         assert_eq!(unescaped.to_string(), unescape_key(raw, Format::Wine2));
