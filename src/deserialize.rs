@@ -73,7 +73,8 @@ pub fn normalize(text: &str) -> String {
     static COMMENTS: Lazy<Regex> = Lazy::new(|| {
         Regex::new(
             r#"(?x)
-                (?<escape> \\" )
+                (?<key> \[.+\])
+                | (?<escape> \\" )
                 | (?P<quote> "(?: \\" | [^"] )*" )
                 | (?P<comment> \s*;.* )
         "#,
@@ -90,7 +91,7 @@ pub fn normalize(text: &str) -> String {
         .unwrap()
     });
 
-    let text = COMMENTS.replace_all(text, "${escape}${quote}");
+    let text = COMMENTS.replace_all(text, "${key}${escape}${quote}");
     let text = CONTINUATIONS.replace_all(&text, ",");
 
     text.to_string()
@@ -322,6 +323,10 @@ mod tests {
     #[test_case("\"foo\"=hex:00,\\\n  01,\\\n  02", "\"foo\"=hex:00,01,02" ; "concatenated lines")]
     #[test_case("\"foo\"=hex:00,\\ ; blah\n  01; blah", "\"foo\"=hex:00,01" ; "concatenated line with comment")]
     #[test_case("\"x\"=dword:00000000\\", "\"x\"=dword:00000000\\" ; "stray backslash is preserved")]
+    #[test_case("[foo;bar]", "[foo;bar]" ; "semicolon in key name")]
+    #[test_case("[foo]bar]", "[foo]bar]" ; "bracket in key name")]
+    #[test_case("[foo]bar;];", "[foo]bar;]" ; "semicolon and bracket in key name")]
+    #[test_case("[foo\"bar]\n\"baz;\"=hex:00", "[foo\"bar]\n\"baz;\"=hex:00" ; "quote in key name")]
     fn normalization(input: &str, output: &str) {
         assert_eq!(output.to_string(), normalize(input))
     }

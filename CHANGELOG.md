@@ -9,6 +9,7 @@
     and string values written as `"name"=str:"data"`.
 * Fixed:
   * Extra backslashes in key paths are now ignored and normalized.
+  * Quotes and semicolons in key names no longer corrupt the deserialization.
 * Changed:
   * The variants of `Key` now name their fields.
   * Values serialized as hexadecimal bytes (e.g., `Kind::Binary`)

@@ -1163,7 +1163,7 @@ Windows Registry Editor Version 5.00
         let registry = Registry::deserialize_file("tests/irregular-regedit5.reg").unwrap();
 
         let deserialized = Registry::new(Format::Regedit5).with(
-            r"HKEY_CURRENT_USER\Software\regashii\irregular",
+            r#"HKEY_CURRENT_USER\Software\regashii\irre]";gular"#,
             Key::new()
                 .with_addendum("addendum".to_string())
                 .with(
@@ -1191,7 +1191,7 @@ Windows Registry Editor Version 5.00
             r#"
 Windows Registry Editor Version 5.00
 
-[HKEY_CURRENT_USER\Software\regashii\irregular] addendum
+[HKEY_CURRENT_USER\Software\regashii\irre]";gular] addendum
 "dword"=hex(4):00
 "hex-continuations"=hex:00,01,02
 "hex-continuations-with-long-name ............................................ end"=hex:00,\
