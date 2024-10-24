@@ -1166,6 +1166,7 @@ Windows Registry Editor Version 5.00
             r#"HKEY_CURRENT_USER\Software\regashii\irre]";gular"#,
             Key::new()
                 .with_addendum("addendum".to_string())
+                .with(ValueName::Default, Value::Sz("".to_string()))
                 .with(
                     "dword",
                     Value::Hex {
@@ -1192,6 +1193,7 @@ Windows Registry Editor Version 5.00
 Windows Registry Editor Version 5.00
 
 [HKEY_CURRENT_USER\Software\regashii\irre]";gular] addendum
+@=""
 "dword"=hex(4):00
 "hex-continuations"=hex:00,01,02
 "hex-continuations-with-long-name ............................................ end"=hex:00,\
@@ -1217,12 +1219,13 @@ Windows Registry Editor Version 5.00
                     .with_addendum("1729718050".to_string())
                     .with_wine_option(wine::KeyOption::Time("1db259080cb98c4".to_string()))
                     .with_wine_option(wine::KeyOption::Class("foo".to_string()))
-                    .with(ValueName::Default, Value::Sz("default".to_string()))
+                    .with(ValueName::Default, Value::Sz("".to_string()))
                     .with("binary-a", Value::Binary(vec![0x61]))
                     .with("dword-1", Value::Dword(1))
                     .with("multi-sz-a-b", Value::MultiSz(vec!["a".to_string(), "b".to_string()]))
                     .with("expand-sz-a", Value::ExpandSz("a".to_string()))
                     .with("sz-a", Value::Sz("a".to_string()))
+                    .with("sz-empty", Value::Sz("".to_string()))
                     .with("sz-str", Value::Sz("x".to_string())),
             )
             .with(
@@ -1250,12 +1253,13 @@ WINE REGISTRY Version 2
 [Software\\regashii\\wine] 1729718050
 #time=1db259080cb98c4
 #class="foo"
-@="default"
+@=""
 "binary-a"=hex:61
 "dword-1"=dword:00000001
 "expand-sz-a"=str(2):"a"
 "multi-sz-a-b"=str(7):"a\0b"
 "sz-a"="a"
+"sz-empty"=""
 "sz-str"="x"
 
 [Software\\regashii\\wine-br\[a\]cket]

@@ -188,12 +188,12 @@ pub fn value(raw: &str, format: Format) -> Option<RawValue> {
             ^
             (
                 (?P<delete>-)
-                | "(?P<sz> ([^"\\]|\\.)+ )"
+                | "(?P<sz> ([^"\\]|\\.)* )"
                 | (?P<str>
                     str
                     (\( (?P<str_kind>[0-9a-fA-F]) \))?
                     : \s*
-                    "(?P<str_data> ([^"\\]|\\.)+ )"
+                    "(?P<str_data> ([^"\\]|\\.)* )"
                   )
                 | dword: \s* (?P<dword>[0-9a-fA-Z]{8})
                 | (?<hex>

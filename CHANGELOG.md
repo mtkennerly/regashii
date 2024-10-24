@@ -10,6 +10,7 @@
 * Fixed:
   * Extra backslashes in key paths are now ignored and normalized.
   * Quotes and semicolons in key names no longer corrupt the deserialization.
+  * Empty string values are now preserved when deserializing.
 * Changed:
   * The variants of `Key` now name their fields.
   * Values serialized as hexadecimal bytes (e.g., `Kind::Binary`)
