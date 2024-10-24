@@ -1006,12 +1006,12 @@ REGEDIT4
         let registry = Registry::deserialize_file("tests/japanese-regedit5.reg").unwrap();
 
         let deserialized = Registry::new(Format::Regedit5).with(
-            r"HKEY_CURRENT_USER\Software\regashii\japanese",
+            r"HKEY_CURRENT_USER\Software\regashii\日本語",
             Key::new()
                 .with("expand-sz", Value::ExpandSz("あ".to_string()))
                 .with("multi-sz-1", Value::MultiSz(vec!["あ".to_string()]))
                 .with("multi-sz-2", Value::MultiSz(vec!["あ".to_string(), "い".to_string()]))
-                .with("sz", Value::Sz("あ".to_string())),
+                .with("sz-あ", Value::Sz("あ".to_string())),
         );
 
         assert_eq!(deserialized, registry);
@@ -1020,11 +1020,11 @@ REGEDIT4
             r#"
 Windows Registry Editor Version 5.00
 
-[HKEY_CURRENT_USER\Software\regashii\japanese]
+[HKEY_CURRENT_USER\Software\regashii\日本語]
 "expand-sz"=hex(2):42,30,00,00
 "multi-sz-1"=hex(7):42,30,00,00,00,00
 "multi-sz-2"=hex(7):42,30,00,00,44,30,00,00,00,00
-"sz"="あ"
+"sz-あ"="あ"
 "#
             .trim_start(),
             deserialized.serialize()
