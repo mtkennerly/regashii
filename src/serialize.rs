@@ -28,14 +28,17 @@ fn escape_value(raw: &str, format: Format) -> String {
 }
 
 fn escape_wine_unicode(raw: &str) -> String {
+    if raw.is_ascii() {
+        return raw.to_string();
+    }
+
     let mut ascii = String::new();
-    for char in raw.chars() {
-        if char.is_ascii() {
-            ascii.push(char);
+    for point in raw.encode_utf16() {
+        if point < 128 {
+            ascii.push(point as u8 as char);
         } else {
-            ascii.push_str(&format!("\\x{:x}", char as u32));
+            ascii.push_str(&format!("\\x{:x}", point));
         }
-        if char as u32 == 10 {}
     }
     ascii
 }
@@ -223,6 +226,7 @@ mod tests {
     #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
     #[test_case(r#"fo[o]bar"#, r#"fo\[o\]bar"# ; "bracket")]
     #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    #[test_case(r"Control Panel\International\🌎🌏🌍", r"Control Panel\\International\\\xd83c\xdf0e\xd83c\xdf0f\xd83c\xdf0d" ; "surrogate pair")]
     fn escape_key_wine2(raw: &str, escaped: &str) {
         assert_eq!(escaped.to_string(), escape_key(raw, Format::Wine2));
     }

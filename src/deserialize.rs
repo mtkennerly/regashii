@@ -45,24 +45,28 @@ fn unescape_value(raw: &str, format: Format) -> String {
 }
 
 fn unescape_wine_unicode(raw: &str) -> String {
-    static UNICODE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\\x([0-9a-fA-F]{4})").unwrap());
+    static UNICODE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r#"(?xs)
+            (\\x (?P<data> [0-9a-fA-F]{4}) )
+            | (?<other> . )
+        "#,
+        )
+        .unwrap()
+    });
 
-    UNICODE
-        .replace_all(raw.as_ref(), |captures: &regex::Captures| {
-            macro_rules! fallback {
-                ($x:expr) => {
-                    match $x {
-                        Some(x) => x,
-                        None => return raw.to_string(),
-                    }
-                };
-            }
-
-            let raw_code = fallback!(captures.get(1)).as_str();
-            let code = fallback!(u32::from_str_radix(raw_code, 16).ok());
-            fallback!(char::from_u32(code)).to_string()
-        })
-        .to_string()
+    let mut points = vec![];
+    for capture in UNICODE.captures_iter(raw) {
+        if let Some(raw_code) = capture.name(group::DATA) {
+            let Ok(code) = u16::from_str_radix(raw_code.as_str(), 16) else {
+                continue;
+            };
+            points.push(code);
+        } else if let Some(other) = capture.name(group::OTHER) {
+            points.extend(other.as_str().encode_utf16());
+        }
+    }
+    String::from_utf16_lossy(&points)
 }
 
 /// Normalize reg file content before deserializing.
@@ -336,6 +340,7 @@ mod tests {
     #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
     #[test_case(r#"fo[o]bar"#, r#"fo\[o\]bar"# ; "bracket")]
     #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    #[test_case(r"Control Panel\International\🌎🌏🌍", r"Control Panel\\International\\\xd83c\xdf0e\xd83c\xdf0f\xd83c\xdf0d" ; "surrogate pair")]
     fn unescape_key_wine2(unescaped: &str, raw: &str) {
         assert_eq!(unescaped.to_string(), unescape_key(raw, Format::Wine2));
     }
