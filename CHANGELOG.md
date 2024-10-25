@@ -11,8 +11,10 @@
   * Extra backslashes in key paths are now ignored and normalized.
   * Quotes and semicolons in key names no longer corrupt the deserialization.
   * Empty string values are now preserved when deserializing.
+  * Larger registry files could have poor deserialization performance
+    because of unoptimized lookups to reuse known keys with different capitalizations.
 * Changed:
-  * The variants of `Key` now name their fields.
+  * `Key` is now a struct instead of an enum.
   * Values serialized as hexadecimal bytes (e.g., `Kind::Binary`)
     are now split onto multiple lines when they're long enough.
 

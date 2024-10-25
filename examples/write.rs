@@ -22,7 +22,7 @@ fn main() -> Result<(), error::Write> {
                     },
                 ),
         )
-        .with(r"HKEY_CURRENT_USER\Software\regashii\deleted", Key::Delete);
+        .with(r"HKEY_CURRENT_USER\Software\regashii\deleted", Key::deleted());
 
     println!("{}", registry.serialize());
     registry.serialize_file("examples/write.reg")?;

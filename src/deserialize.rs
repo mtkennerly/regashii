@@ -205,7 +205,7 @@ pub fn key(raw: &str, format: Format) -> Option<(KeyName, Key)> {
     let addendum = caps.name(group::ADDENDUM).map(|x| x.as_str().trim().to_string());
 
     if delete {
-        Some((name, Key::Delete))
+        Some((name, Key::deleted()))
     } else if let Some(addendum) = addendum {
         Some((name, Key::new().with_addendum(addendum)))
     } else {

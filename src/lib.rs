@@ -19,6 +19,8 @@ use regex::Regex;
 pub struct Registry {
     format: Format,
     keys: BTreeMap<KeyName, Key>,
+    // Lowercase -> stored.
+    key_names: BTreeMap<KeyName, KeyName>,
     wine_options: BTreeSet<wine::GlobalOption>,
 }
 
@@ -56,115 +58,75 @@ impl Registry {
         &mut self.keys
     }
 
+    fn insert_key(&mut self, name: KeyName, key: Key) {
+        self.key_names.insert(name.to_lowercase(), name.clone());
+        self.keys.insert(name, key);
+    }
+
     /// Add or update a key.
     /// Will try to reuse an equivalent existing key name, if any.
     pub fn update(&mut self, requested_name: KeyName, key: Key) {
         let lookup = self.key_name(&requested_name);
 
-        if let Some(stored) = self.keys.remove(&lookup) {
-            match (stored, key) {
-                (_, Key::Delete) => {
-                    self.keys.insert(requested_name, Key::Delete);
+        if let Some(mut stored) = self.keys.remove(&lookup) {
+            match (stored.kind, key.kind) {
+                (_, KeyKind::Delete) => {
+                    self.insert_key(requested_name, Key::deleted());
                 }
-                (
-                    Key::Delete,
-                    Key::Add {
-                        values,
-                        wine_options,
-                        addendum,
-                    }
-                    | Key::Replace {
-                        values,
-                        wine_options,
-                        addendum,
-                    },
-                ) => {
-                    self.keys.insert(
+                (KeyKind::Delete, KeyKind::Add | KeyKind::Replace) => {
+                    self.insert_key(
                         requested_name,
-                        Key::Replace {
-                            values,
-                            wine_options,
-                            addendum,
+                        Key {
+                            kind: KeyKind::Replace,
+                            ..key
                         },
                     );
                 }
-                (
-                    Key::Add {
-                        values: mut stored_values,
-                        wine_options: mut stored_wine_options,
-                        addendum: _,
-                    },
-                    Key::Add {
-                        values: new_values,
-                        wine_options: new_wine_options,
-                        addendum,
-                    },
-                ) => {
-                    stored_values.extend(new_values);
-                    stored_wine_options.extend(new_wine_options);
-                    self.keys.insert(
+                (KeyKind::Add, KeyKind::Add) => {
+                    stored.values.extend(key.values);
+                    stored.wine_options.extend(key.wine_options);
+                    self.insert_key(
                         lookup,
-                        Key::Add {
-                            values: stored_values,
-                            wine_options: stored_wine_options,
-                            addendum,
+                        Key {
+                            kind: KeyKind::Add,
+                            value_names: Key::build_name_map(stored.values.keys()),
+                            values: stored.values,
+                            wine_options: stored.wine_options,
+                            addendum: key.addendum,
                         },
                     );
                 }
-                (
-                    Key::Add {
-                        values: mut stored_values,
-                        wine_options: mut stored_wine_options,
-                        addendum: _,
-                    }
-                    | Key::Replace {
-                        values: mut stored_values,
-                        wine_options: mut stored_wine_options,
-                        addendum: _,
-                    },
-                    Key::Replace {
-                        values: new_values,
-                        wine_options: new_wine_options,
-                        addendum,
-                    },
-                ) => {
-                    stored_values.extend(new_values);
-                    stored_wine_options.extend(new_wine_options);
-                    self.keys.insert(
+                (KeyKind::Add | KeyKind::Replace, KeyKind::Replace) => {
+                    stored.values.extend(key.values);
+                    stored.wine_options.extend(key.wine_options);
+                    self.insert_key(
                         lookup,
-                        Key::Replace {
-                            values: stored_values,
-                            wine_options: stored_wine_options,
-                            addendum,
+                        Key {
+                            kind: KeyKind::Replace,
+                            value_names: Key::build_name_map(stored.values.keys()),
+                            values: stored.values,
+                            wine_options: stored.wine_options,
+                            addendum: key.addendum,
                         },
                     );
                 }
-                (
-                    Key::Replace {
-                        values: mut stored_values,
-                        wine_options: mut stored_wine_options,
-                        addendum: _,
-                    },
-                    Key::Add {
-                        values: new_values,
-                        wine_options: new_wine_options,
-                        addendum,
-                    },
-                ) => {
-                    stored_values.extend(new_values);
-                    stored_wine_options.extend(new_wine_options);
-                    self.keys.insert(
+                (KeyKind::Replace, KeyKind::Add) => {
+                    stored.values.extend(key.values);
+                    stored.wine_options.extend(key.wine_options);
+                    self.insert_key(
                         lookup,
-                        Key::Replace {
-                            values: stored_values,
-                            wine_options: stored_wine_options,
-                            addendum,
+                        Key {
+                            kind: KeyKind::Replace,
+                            value_names: Key::build_name_map(stored.values.keys()),
+                            values: stored.values,
+                            wine_options: stored.wine_options,
+                            addendum: key.addendum,
                         },
                     );
                 }
             }
         } else {
-            self.keys.insert(lookup, key);
+            self.insert_key(lookup, key);
         }
     }
 
@@ -186,13 +148,8 @@ impl Registry {
             return requested.clone();
         }
 
-        let requested_lower = requested.0.to_lowercase();
-
-        for key in self.keys.keys() {
-            let stored_lower = key.0.to_lowercase();
-            if requested_lower == stored_lower {
-                return key.clone();
-            }
+        if let Some(known) = self.key_names.get(&requested.to_lowercase()) {
+            return known.clone();
         }
 
         requested.clone()
@@ -337,6 +294,10 @@ impl KeyName {
 
         Self(normalized)
     }
+
+    fn to_lowercase(&self) -> Self {
+        Self(self.0.to_lowercase())
+    }
 }
 
 impl From<String> for KeyName {
@@ -351,56 +312,75 @@ impl From<&str> for KeyName {
     }
 }
 
-/// Representation of a `[registry\key]` section.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Key {
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum KeyKind {
+    #[default]
+    /// This key should be added to the registry.
+    Add,
+    /// This key should be first deleted and then added to the registry.
+    Replace,
     /// This key should be deleted from the registry.
     Delete,
-    /// This key should be added to the registry.
-    Add {
-        values: BTreeMap<ValueName, Value>,
-        /// Any extra content after the key name's closing bracket.
-        /// Wine uses this to store the modified time.
-        addendum: Option<String>,
-        wine_options: BTreeSet<wine::KeyOption>,
-    },
-    /// This key should be first deleted and then added to the registry.
-    Replace {
-        values: BTreeMap<ValueName, Value>,
-        /// Any extra content after the key name's closing bracket.
-        /// Wine uses this to store the modified time.
-        addendum: Option<String>,
-        wine_options: BTreeSet<wine::KeyOption>,
-    },
+}
+
+/// Representation of a `[registry\key]` section.
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Key {
+    kind: KeyKind,
+    values: BTreeMap<ValueName, Value>,
+    // Lowercase -> stored.
+    value_names: BTreeMap<ValueName, ValueName>,
+    /// Any extra content after the key name's closing bracket.
+    /// Wine uses this to store the modified time.
+    addendum: Option<String>,
+    wine_options: BTreeSet<wine::KeyOption>,
 }
 
 impl Key {
-    /// Initialize a default `Key::Add` variant.
+    /// Initialize a default `KeyKind::Add` variant.
     pub fn new() -> Self {
-        Self::Add {
-            values: Default::default(),
-            wine_options: Default::default(),
-            addendum: Default::default(),
+        Self::default()
+    }
+
+    /// Initialize a default `KeyKind::Replace` variant.
+    pub fn replaced() -> Self {
+        Self {
+            kind: KeyKind::Replace,
+            ..Default::default()
         }
     }
 
-    /// Initialize a default `Key::Replace` variant.
-    pub fn new_replace() -> Self {
-        Self::Replace {
-            values: Default::default(),
-            wine_options: Default::default(),
-            addendum: Default::default(),
+    /// Initialize a default `KeyKind::Delete` variant.
+    pub fn deleted() -> Self {
+        Self {
+            kind: KeyKind::Delete,
+            ..Default::default()
         }
+    }
+
+    /// This key's kind.
+    pub fn kind(&self) -> KeyKind {
+        self.kind
+    }
+
+    /// This key's values.
+    pub fn values(&self) -> &BTreeMap<ValueName, Value> {
+        &self.values
+    }
+
+    /// This key's addendum (text after key name).
+    pub fn addendum(&self) -> Option<&String> {
+        self.addendum.as_ref()
+    }
+
+    /// This key's Wine options.
+    pub fn wine_options(&self) -> &BTreeSet<wine::KeyOption> {
+        &self.wine_options
     }
 
     /// Add or update a value (method chain style).
     /// Will try to reuse an equivalent existing value name, if any.
-    /// Does nothing for `Key::Delete`.
     pub fn with(mut self, name: impl Into<ValueName>, value: Value) -> Self {
-        if self == Self::Delete {
-            return self;
-        }
-
         self.update(name.into(), value);
 
         self
@@ -409,96 +389,63 @@ impl Key {
     /// Add an addendum after the key name (method chain style).
     /// Does nothing for `Key::Delete`.
     pub fn with_addendum(mut self, addendum: String) -> Self {
-        match &mut self {
-            Key::Delete => {}
-            Key::Add { addendum: stored, .. } | Key::Replace { addendum: stored, .. } => {
-                *stored = Some(addendum);
-            }
-        }
+        self.addendum = Some(addendum);
         self
     }
 
     /// Add a Wine option (method chain style).
-    /// Does nothing for `Key::Delete`.
     pub fn with_wine_option(mut self, option: wine::KeyOption) -> Self {
-        match &mut self {
-            Key::Delete => {}
-            Key::Add { wine_options, .. } | Key::Replace { wine_options, .. } => {
-                wine_options.insert(option);
-            }
-        }
+        self.wine_options.insert(option);
         self
     }
 
     /// Add or update a value.
     /// Will try to reuse an equivalent existing value name, if any.
-    /// Does nothing for `Key::Delete`.
     pub fn update(&mut self, requested_name: ValueName, value: Value) {
         let lookup = self.value_name(&requested_name);
 
-        match self {
-            Key::Delete => {}
-            Key::Add { values, .. } | Key::Replace { values, .. } => {
-                if let Some((stored_name, stored)) = values.remove_entry(&lookup) {
-                    if stored == Value::Delete || value == Value::Delete {
-                        values.insert(requested_name, value);
-                    } else {
-                        values.insert(stored_name, value);
-                    }
-                } else {
-                    values.insert(lookup, value);
-                }
+        if let Some((stored_name, stored)) = self.values.remove_entry(&lookup) {
+            if stored == Value::Delete || value == Value::Delete {
+                self.insert_value(requested_name, value);
+            } else {
+                self.insert_value(stored_name, value);
             }
+        } else {
+            self.insert_value(lookup, value);
         }
     }
 
     /// Add an addendum after the key name.
-    /// Does nothing for `Key::Delete`.
     pub fn add_addendum(&mut self, addendum: String) {
-        match self {
-            Key::Delete => {}
-            Key::Add { addendum: stored, .. } | Key::Replace { addendum: stored, .. } => {
-                *stored = Some(addendum);
-            }
-        }
+        self.addendum = Some(addendum);
     }
 
     /// Add a Wine option.
-    /// Does nothing for `Key::Delete`.
     pub fn add_wine_option(&mut self, option: wine::KeyOption) {
-        match self {
-            Key::Delete => {}
-            Key::Add { wine_options, .. } | Key::Replace { wine_options, .. } => {
-                wine_options.insert(option);
-            }
-        }
+        self.wine_options.insert(option);
     }
 
     /// Reuse an equivalent existing value name or normalize the requested one.
     /// Capitalization doesn't matter.
     pub fn value_name<'a>(&'a self, name: &'a ValueName) -> ValueName {
-        match self {
-            Key::Delete => name.clone(),
-            Key::Add { values, .. } | Key::Replace { values, .. } => {
-                if values.contains_key(name) {
-                    return name.clone();
-                }
-
-                for value_name in values.keys() {
-                    if name.to_lowercase() == value_name.to_lowercase() {
-                        return value_name.clone();
-                    }
-                }
-
-                name.clone()
-            }
+        if self.values.contains_key(name) {
+            return name.clone();
         }
-    }
-}
 
-impl Default for Key {
-    fn default() -> Self {
-        Self::new()
+        if let Some(known) = self.value_names.get(&name.to_lowercase()) {
+            return known.clone();
+        }
+
+        name.clone()
+    }
+
+    fn insert_value(&mut self, name: ValueName, key: Value) {
+        self.value_names.insert(name.to_lowercase(), name.clone());
+        self.values.insert(name, key);
+    }
+
+    fn build_name_map<'a>(stored: impl Iterator<Item = &'a ValueName>) -> BTreeMap<ValueName, ValueName> {
+        stored.map(|stored| (stored.to_lowercase(), stored.clone())).collect()
     }
 }
 
@@ -839,7 +786,7 @@ mod tests {
         let registry = Registry::deserialize_file("tests/simple-regedit5.reg").unwrap();
 
         let deserialized = Registry::new(Format::Regedit5)
-            .with(r"HKEY_CURRENT_USER\Software\regashii\remove", Key::Delete)
+            .with(r"HKEY_CURRENT_USER\Software\regashii\remove", Key::deleted())
             .with(
                 r"HKEY_CURRENT_USER\Software\regashii\simple",
                 Key::new()
@@ -875,7 +822,7 @@ Windows Registry Editor Version 5.00
         let registry = Registry::deserialize_file("tests/simple-regedit4.reg").unwrap();
 
         let deserialized = Registry::new(Format::Regedit4)
-            .with(r"HKEY_CURRENT_USER\Software\regashii\remove", Key::Delete)
+            .with(r"HKEY_CURRENT_USER\Software\regashii\remove", Key::deleted())
             .with(
                 r"HKEY_CURRENT_USER\Software\regashii\simple",
                 Key::new()
@@ -1129,7 +1076,7 @@ REGEDIT4
         let deserialized = Registry::new(Format::Regedit5)
             .with(
                 r"HKEY_CURRENT_USER\Software\regashii\repeated-kEy",
-                Key::new_replace()
+                Key::replaced()
                     .with("bar", Value::Sz("2".to_string()))
                     .with("baz", Value::Sz("3".to_string())),
             )

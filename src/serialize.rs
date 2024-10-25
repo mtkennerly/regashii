@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{wine, Format, Key, KeyName, Kind, RawValue, ValueName};
+use crate::{wine, Format, Key, KeyKind, KeyName, Kind, RawValue, ValueName};
 
 fn quoted(raw: &str) -> String {
     format!("\"{raw}\"")
@@ -73,53 +73,35 @@ pub fn key_deleted(name: &KeyName, format: Format) -> String {
 }
 
 pub fn key(name: &KeyName, key: &Key, format: Format) -> String {
-    match key {
-        Key::Delete => key_deleted(name, format),
-        Key::Add {
-            values,
-            addendum,
-            wine_options,
-        } => {
-            let mut lines = vec![key_added(name, addendum.as_ref(), format)];
+    let mut lines = vec![];
 
-            if format.is_wine() {
-                lines.extend(wine_key_options(wine_options));
-            }
-
-            let values: BTreeMap<_, _> = values
-                .clone()
-                .into_iter()
-                .map(|(n, v)| (n, v.into_raw(format)))
-                .collect();
-            lines.extend(self::values(&values, format));
-
-            lines.join("\n")
+    match key.kind {
+        KeyKind::Add => {
+            lines.push(key_added(name, key.addendum.as_ref(), format));
         }
-        Key::Replace {
-            values,
-            addendum,
-            wine_options,
-        } => {
-            let mut lines = vec![
-                key_deleted(name, format),
-                "".to_string(),
-                key_added(name, addendum.as_ref(), format),
-            ];
-
-            if format.is_wine() {
-                lines.extend(wine_key_options(wine_options));
-            }
-
-            let values: BTreeMap<_, _> = values
-                .clone()
-                .into_iter()
-                .map(|(n, v)| (n, v.into_raw(format)))
-                .collect();
-            lines.extend(self::values(&values, format));
-
-            lines.join("\n")
+        KeyKind::Replace => {
+            lines.push(key_deleted(name, format));
+            lines.push("".to_string());
+            lines.push(key_added(name, key.addendum.as_ref(), format));
+        }
+        KeyKind::Delete => {
+            lines.push(key_deleted(name, format));
         }
     }
+
+    if format.is_wine() {
+        lines.extend(wine_key_options(&key.wine_options));
+    }
+
+    let values: BTreeMap<_, _> = key
+        .values
+        .clone()
+        .into_iter()
+        .map(|(n, v)| (n, v.into_raw(format)))
+        .collect();
+    lines.extend(self::values(&values, format));
+
+    lines.join("\n")
 }
 
 pub fn values(values: &BTreeMap<ValueName, RawValue>, format: Format) -> Vec<String> {
@@ -254,7 +236,7 @@ mod tests {
     }
 
     #[test_case("[foo]", "foo", Key::new() ; "add")]
-    #[test_case("[-foo]", "foo", Key::Delete ; "delete")]
+    #[test_case("[-foo]", "foo", Key::deleted() ; "delete")]
     #[test_case("[foo] bar", "foo", Key::new().with_addendum("bar".to_string()) ; "addendum")]
     #[test_case(r"[foo\bar]", r"foo\bar", Key::new() ; "one backslash")]
     #[test_case(r"[foo\bar]", r"foo\\bar", Key::new() ; "multiple backslashes")]

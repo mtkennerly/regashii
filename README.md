@@ -31,17 +31,17 @@ Regashii is a Rust crate that lets you (de)serialize Windows Regedit `*.reg` fil
 ## Sample
 ### Read
 ```rust
-use regashii::{Key, Registry, Value};
+use regashii::{Key, KeyKind, Registry, Value};
 
 let registry = Registry::deserialize_file("sample.reg").unwrap();
 for (key_name, key) in registry.keys() {
-    match key {
-        Key::Delete => {
+    match key.kind() {
+        KeyKind::Delete => {
             // On import, Regedit would delete this key
         },
-        Key::Add { values, .. } => {
+        KeyKind::Add => {
             // On import, Regedit would add this key and its values
-            for (value_name, value) in values {
+            for (value_name, value) in key.values() {
                 match value {
                     Value::Delete => { /* This value would be deleted */ },
                     Value::Sz(string) => { /* This value would be added */ }
@@ -49,9 +49,9 @@ for (key_name, key) in registry.keys() {
                 }
             }
         },
-        Key::Replace { values, .. } => {
+        KeyKind::Replace => {
             // On import, Regedit would delete and re-add this key and its values
-            for (value_name, value) in values {
+            for (value_name, value) in key.values() {
                 // ...
             }
         },
