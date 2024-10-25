@@ -3,45 +3,56 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 mod group {
-    pub const DELETE: &str = "delete";
-    pub const NAME: &str = "name";
+    pub const ADDENDUM: &str = "addendum";
+    pub const ARCH: &str = "arch";
+    pub const CLASS: &str = "class";
+    pub const COMMENT: &str = "comment";
     pub const DATA: &str = "data";
     pub const DEFAULT: &str = "default";
+    pub const DELETE: &str = "delete";
+    pub const DWORD: &str = "dword";
+    pub const ESCAPE: &str = "escape";
+    pub const ESCAPE_BACKSLASH: &str = "escape_bs";
+    pub const ESCAPE_BRACKET_OPEN: &str = "escape_bracket1";
+    pub const ESCAPE_BRACKET_CLOSE: &str = "escape_bracket2";
+    pub const ESCAPE_CARRIAGE_RETURN: &str = "escape_cr";
+    pub const ESCAPE_NEW_LINE: &str = "escape_nl";
+    pub const ESCAPE_NULL: &str = "escape_null";
+    pub const ESCAPE_QUOTE: &str = "escape_quote";
+    pub const HEX: &str = "hex";
+    pub const KEY: &str = "key";
+    pub const KIND: &str = "kind";
+    pub const LINK: &str = "link";
+    pub const NAME: &str = "name";
+    pub const OTHER: &str = "other";
+    pub const QUOTE: &str = "quote";
     pub const SZ: &str = "sz";
     pub const STR: &str = "str";
     pub const STR_KIND: &str = "str_kind";
     pub const STR_DATA: &str = "str_data";
-    pub const DWORD: &str = "dword";
-    pub const HEX: &str = "hex";
-    pub const KIND: &str = "kind";
-    pub const ADDENDUM: &str = "addendum";
-    pub const ARCH: &str = "arch";
-    pub const CLASS: &str = "class";
     pub const TIME: &str = "time";
-    pub const LINK: &str = "link";
-    pub const OTHER: &str = "other";
-    pub const ESCAPE_BACKSLASH: &str = "escape_bs";
-    pub const ESCAPE_NEW_LINE: &str = "escape_nl";
-    pub const ESCAPE_CARRIAGE_RETURN: &str = "escape_cr";
-    pub const ESCAPE_NULL: &str = "escape_null";
-    pub const ESCAPE_QUOTE: &str = "escape_quote";
-    pub const ESCAPE_BRACKET_OPEN: &str = "escape_bracket1";
-    pub const ESCAPE_BRACKET_CLOSE: &str = "escape_bracket2";
+}
+
+macro_rules! regex {
+    ($name:ident, $pattern:expr) => {
+        static $name: Lazy<Regex> = Lazy::new(|| {
+            #[allow(unused_imports)]
+            use group::*;
+            Regex::new(&format!($pattern)).unwrap()
+        });
+    };
 }
 
 fn unescape_key(raw: &str, format: Format) -> String {
     if format.is_wine() {
-        static ESCAPES: Lazy<Regex> = Lazy::new(|| {
-            use group::*;
-            Regex::new(&format!(
-                r#"(?x)
+        regex!(
+            ESCAPES,
+            r#"(?x)
                 (?<{ESCAPE_BACKSLASH}> \\\\)
                 | (?<{ESCAPE_BRACKET_OPEN}> \\\[ )
                 | (?<{ESCAPE_BRACKET_CLOSE}> \\\] )
             "#
-            ))
-            .unwrap()
-        });
+        );
 
         let normalized = ESCAPES.replace_all(raw, |captures: &regex::Captures| {
             if captures.name(group::ESCAPE_BACKSLASH).is_some() {
@@ -63,19 +74,16 @@ fn unescape_key(raw: &str, format: Format) -> String {
 
 fn unescape_value(raw: &str, format: Format) -> String {
     if format.is_wine() {
-        static ESCAPES: Lazy<Regex> = Lazy::new(|| {
-            use group::*;
-            Regex::new(&format!(
-                r#"(?x)
+        regex!(
+            ESCAPES,
+            r#"(?x)
                 (?<{ESCAPE_BACKSLASH}> \\\\)
                 | (?<{ESCAPE_QUOTE}> \\" )
                 | (?<{ESCAPE_NEW_LINE}> \\n )
                 | (?<{ESCAPE_CARRIAGE_RETURN}> \\r )
                 | (?<{ESCAPE_NULL}> \\0 )
             "#
-            ))
-            .unwrap()
-        });
+        );
 
         let normalized = ESCAPES.replace_all(raw, |captures: &regex::Captures| {
             if captures.name(group::ESCAPE_BACKSLASH).is_some() {
@@ -95,16 +103,13 @@ fn unescape_value(raw: &str, format: Format) -> String {
 
         unescape_wine_unicode(&normalized)
     } else {
-        static ESCAPES: Lazy<Regex> = Lazy::new(|| {
-            use group::*;
-            Regex::new(&format!(
-                r#"(?x)
+        regex!(
+            ESCAPES,
+            r#"(?x)
                 (?<{ESCAPE_BACKSLASH}> \\\\)
                 | (?<{ESCAPE_QUOTE}> \\" )
             "#
-            ))
-            .unwrap()
-        });
+        );
 
         ESCAPES
             .replace_all(raw, |captures: &regex::Captures| {
@@ -121,15 +126,13 @@ fn unescape_value(raw: &str, format: Format) -> String {
 }
 
 fn unescape_wine_unicode(raw: &str) -> String {
-    static UNICODE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?xs)
-            (\\x (?P<data> [0-9a-fA-F]{4}) )
-            | (?<other> . )
-        "#,
-        )
-        .unwrap()
-    });
+    regex!(
+        UNICODE,
+        r#"(?xs)
+            (\\x (?<{DATA}> [0-9a-fA-F]{{4}}) )
+            | (?<{OTHER}> . )
+        "#
+    );
 
     let mut points = vec![];
     for capture in UNICODE.captures_iter(raw) {
@@ -150,26 +153,22 @@ fn unescape_wine_unicode(raw: &str) -> String {
 /// * Removes `;` comments
 /// * Concatenates hex lines that end with `,\`
 pub fn normalize(text: &str) -> String {
-    static COMMENTS: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?x)
-                (?<key> \[.+\])
-                | (?<escape> \\" )
-                | (?P<quote> "(?: \\" | [^"] )*" )
-                | (?P<comment> \s*;.* )
-        "#,
-        )
-        .unwrap()
-    });
+    regex!(
+        COMMENTS,
+        r#"(?x)
+            (?<{KEY}> \[.+\])
+            | (?<{ESCAPE}> \\" )
+            | (?<{QUOTE}> "(?: \\" | [^"] )*" )
+            | (?<{COMMENT}> \s*;.* )
+        "#
+    );
 
-    static CONTINUATIONS: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?x)
+    regex!(
+        CONTINUATIONS,
+        r#"(?x)
             (,\\[\r\n]+\s*)
-        "#,
-        )
-        .unwrap()
-    });
+        "#
+    );
 
     let text = COMMENTS.replace_all(text, "${key}${escape}${quote}");
     let text = CONTINUATIONS.replace_all(&text, ",");
@@ -187,20 +186,18 @@ pub fn format(raw: &str) -> Result<Format, error::Deserialize> {
 }
 
 pub fn key(raw: &str, format: Format) -> Option<(KeyName, Key)> {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r"(?x)
+    regex!(
+        RE,
+        r"(?x)
             ^\s*
             \[
-            (?P<delete>-)?
-            (?P<name>[^\s-].*)
+            (?<{DELETE}>-)?
+            (?<{NAME}>[^\s-].*)
             \]
             \s*
-            (?P<addendum> [^;]+)?
-        ",
-        )
-        .unwrap()
-    });
+            (?<{ADDENDUM}> [^;]+)?
+        "
+    );
 
     let caps = RE.captures(raw)?;
     let delete = caps.name(group::DELETE).is_some();
@@ -217,17 +214,15 @@ pub fn key(raw: &str, format: Format) -> Option<(KeyName, Key)> {
 }
 
 pub fn named_value(raw: &str, format: Format) -> Option<(ValueName, RawValue)> {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?x)
+    regex!(
+        RE,
+        r#"(?x)
             \s*
-            (?P<name> @ | "([^"]|\\")+" )
+            (?<{NAME}> @ | "([^"]|\\")+" )
             \s* = \s*
-            (?P<data> .+ )
-        "#,
-        )
-        .unwrap()
-    });
+            (?<{DATA}> .+ )
+        "#
+    );
 
     let caps = RE.captures(raw)?;
     let name = caps.name(group::NAME)?.as_str();
@@ -237,15 +232,13 @@ pub fn named_value(raw: &str, format: Format) -> Option<(ValueName, RawValue)> {
 }
 
 pub fn value_name(raw: &str, format: Format) -> Option<ValueName> {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?x)
-            (?P<default> @ )
-            | "(?P<name> ([^"\\]|\\.)+ )"
-        "#,
-        )
-        .unwrap()
-    });
+    regex!(
+        RE,
+        r#"(?x)
+            (?<{DEFAULT}> @ )
+            | "(?<{NAME}> ([^"\\]|\\.)+ )"
+        "#
+    );
 
     let caps = RE.captures(raw)?;
 
@@ -258,34 +251,32 @@ pub fn value_name(raw: &str, format: Format) -> Option<ValueName> {
 }
 
 pub fn value(raw: &str, format: Format) -> Option<RawValue> {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?x)
+    regex!(
+        RE,
+        r#"(?x)
             ^
             (
-                (?P<delete>-)
-                | "(?P<sz> ([^"\\]|\\.)* )"
-                | (?P<str>
+                (?<{DELETE}>-)
+                | "(?<{SZ}> ([^"\\]|\\.)* )"
+                | (?<{STR}>
                     str
-                    (\( (?P<str_kind>[0-9a-fA-F]) \))?
+                    (\( (?<{STR_KIND}>[0-9a-fA-F]) \))?
                     : \s*
-                    "(?P<str_data> ([^"\\]|\\.)* )"
+                    "(?<{STR_DATA}> ([^"\\]|\\.)* )"
                   )
-                | dword: \s* (?P<dword>[0-9a-fA-Z]{8})
-                | (?<hex>
+                | dword: \s* (?<{DWORD}>[0-9a-fA-Z]{{8}})
+                | (?<{HEX}>
                     hex
-                    (\( (?P<kind>[0-9a-fA-F]) \))?
+                    (\( (?<{KIND}>[0-9a-fA-F]) \))?
                     : \s*
-                    (?P<data>
-                        ([0-9a-fA-F]{1,2})(\s*,\s*[0-9a-fA-F]{1,2})*\s*,?\s*
+                    (?<{DATA}>
+                        ([0-9a-fA-F]{{1,2}})(\s*,\s*[0-9a-fA-F]{{1,2}})*\s*,?\s*
                     )?
                 )
             )
             $
-        "#,
-        )
-        .unwrap()
-    });
+        "#
+    );
 
     let caps = RE.captures(raw)?;
 
@@ -334,19 +325,17 @@ pub fn value(raw: &str, format: Format) -> Option<RawValue> {
 }
 
 pub fn wine_global_option(raw: &str) -> Option<wine::GlobalOption> {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?x)
+    regex!(
+        RE,
+        r#"(?x)
             ^
             \#(
-                arch=(?P<arch> .+)
-                | (?P<other> .+)
+                arch=(?<{ARCH}> .+)
+                | (?<{OTHER}> .+)
             )
             $
-        "#,
-        )
-        .unwrap()
-    });
+        "#
+    );
 
     let caps = RE.captures(raw)?;
 
@@ -359,21 +348,19 @@ pub fn wine_global_option(raw: &str) -> Option<wine::GlobalOption> {
 }
 
 pub fn wine_key_option(raw: &str) -> Option<wine::KeyOption> {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(
-            r#"(?x)
+    regex!(
+        RE,
+        r#"(?x)
             ^
             \#(
-                class="(?P<class> [^"]+)"
-                | time=(?P<time> [0-9a-fA-F]+)
-                | (?P<link> link)
-                | (?P<other> .+)
+                class="(?<{CLASS}> [^"]+)"
+                | time=(?<{TIME}> [0-9a-fA-F]+)
+                | (?<{LINK}> link)
+                | (?<{OTHER}> .+)
             )
             $
-        "#,
-        )
-        .unwrap()
-    });
+        "#
+    );
 
     let caps = RE.captures(raw)?;
 
