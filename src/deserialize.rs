@@ -20,11 +20,42 @@ mod group {
     pub const TIME: &str = "time";
     pub const LINK: &str = "link";
     pub const OTHER: &str = "other";
+    pub const ESCAPE_BACKSLASH: &str = "escape_bs";
+    pub const ESCAPE_NEW_LINE: &str = "escape_nl";
+    pub const ESCAPE_CARRIAGE_RETURN: &str = "escape_cr";
+    pub const ESCAPE_NULL: &str = "escape_null";
+    pub const ESCAPE_QUOTE: &str = "escape_quote";
+    pub const ESCAPE_BRACKET_OPEN: &str = "escape_bracket1";
+    pub const ESCAPE_BRACKET_CLOSE: &str = "escape_bracket2";
 }
 
 fn unescape_key(raw: &str, format: Format) -> String {
     if format.is_wine() {
-        unescape_wine_unicode(&raw.replace(r"\\", r"\").replace(r"\[", "[").replace(r"\]", "]"))
+        static ESCAPES: Lazy<Regex> = Lazy::new(|| {
+            use group::*;
+            Regex::new(&format!(
+                r#"(?x)
+                (?<{ESCAPE_BACKSLASH}> \\\\)
+                | (?<{ESCAPE_BRACKET_OPEN}> \\\[ )
+                | (?<{ESCAPE_BRACKET_CLOSE}> \\\] )
+            "#
+            ))
+            .unwrap()
+        });
+
+        let normalized = ESCAPES.replace_all(raw, |captures: &regex::Captures| {
+            if captures.name(group::ESCAPE_BACKSLASH).is_some() {
+                "\\"
+            } else if captures.name(group::ESCAPE_BRACKET_OPEN).is_some() {
+                "["
+            } else if captures.name(group::ESCAPE_BRACKET_CLOSE).is_some() {
+                "]"
+            } else {
+                ""
+            }
+        });
+
+        unescape_wine_unicode(&normalized)
     } else {
         raw.to_string()
     }
@@ -32,15 +63,60 @@ fn unescape_key(raw: &str, format: Format) -> String {
 
 fn unescape_value(raw: &str, format: Format) -> String {
     if format.is_wine() {
-        let normalized = raw
-            .replace(r"\\", r"\")
-            .replace(r#"\""#, "\"")
-            .replace(r"\0", "\0")
-            .replace(r"\n", "\n")
-            .replace(r"\r", "\r");
+        static ESCAPES: Lazy<Regex> = Lazy::new(|| {
+            use group::*;
+            Regex::new(&format!(
+                r#"(?x)
+                (?<{ESCAPE_BACKSLASH}> \\\\)
+                | (?<{ESCAPE_QUOTE}> \\" )
+                | (?<{ESCAPE_NEW_LINE}> \\n )
+                | (?<{ESCAPE_CARRIAGE_RETURN}> \\r )
+                | (?<{ESCAPE_NULL}> \\0 )
+            "#
+            ))
+            .unwrap()
+        });
+
+        let normalized = ESCAPES.replace_all(raw, |captures: &regex::Captures| {
+            if captures.name(group::ESCAPE_BACKSLASH).is_some() {
+                "\\"
+            } else if captures.name(group::ESCAPE_QUOTE).is_some() {
+                "\""
+            } else if captures.name(group::ESCAPE_NEW_LINE).is_some() {
+                "\n"
+            } else if captures.name(group::ESCAPE_CARRIAGE_RETURN).is_some() {
+                "\r"
+            } else if captures.name(group::ESCAPE_NULL).is_some() {
+                "\0"
+            } else {
+                ""
+            }
+        });
+
         unescape_wine_unicode(&normalized)
     } else {
-        raw.replace(r"\\", r"\").replace(r#"\""#, "\"")
+        static ESCAPES: Lazy<Regex> = Lazy::new(|| {
+            use group::*;
+            Regex::new(&format!(
+                r#"(?x)
+                (?<{ESCAPE_BACKSLASH}> \\\\)
+                | (?<{ESCAPE_QUOTE}> \\" )
+            "#
+            ))
+            .unwrap()
+        });
+
+        ESCAPES
+            .replace_all(raw, |captures: &regex::Captures| {
+                if captures.name(group::ESCAPE_BACKSLASH).is_some() {
+                    "\\"
+                } else if captures.name(group::ESCAPE_QUOTE).is_some() {
+                    "\""
+                } else {
+                    ""
+                }
+            })
+            .to_string()
     }
 }
 
@@ -360,7 +436,9 @@ mod tests {
     #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
     #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
     #[test_case("foo\nbar", r"foo\nbar" ; "new line")]
+    #[test_case(r"foo\nx", r"foo\\nx" ; "backsash not new line")]
     #[test_case("foo\rbar", r"foo\rbar" ; "carriage return")]
+    #[test_case(r"foo\rx", r"foo\\rx" ; "backslash not carriage return")]
     #[test_case("foo\0bar", r"foo\0bar" ; "null")]
     #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
     fn unescape_value_wine2(unescaped: &str, raw: &str) {
