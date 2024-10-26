@@ -203,38 +203,6 @@ mod tests {
     use pretty_assertions::assert_eq;
     use test_case::test_case;
 
-    #[test_case("", "" ; "empty")]
-    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
-    #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
-    #[test_case(r#"fo[o]bar"#, r#"fo\[o\]bar"# ; "bracket")]
-    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
-    #[test_case(r"Control Panel\International\🌎🌏🌍", r"Control Panel\\International\\\xd83c\xdf0e\xd83c\xdf0f\xd83c\xdf0d" ; "surrogate pair")]
-    fn escape_key_wine2(raw: &str, escaped: &str) {
-        assert_eq!(escaped.to_string(), escape_key(raw, Format::Wine2));
-    }
-
-    #[test_case("", "" ; "empty")]
-    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
-    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
-    #[test_case("foo\nbar", "foo\nbar" ; "new line")]
-    #[test_case("foo\rbar", "foo\rbar" ; "carriage return")]
-    #[test_case("foo\0bar", "foo\0bar" ; "null")]
-    #[test_case("fooあbar", "fooあbar" ; "Unicode")]
-    fn escape_value_regedit5(raw: &str, escaped: &str) {
-        assert_eq!(escaped.to_string(), escape_value(raw, Format::Regedit5));
-    }
-
-    #[test_case("", "" ; "empty")]
-    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
-    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
-    #[test_case("foo\nbar", r"foo\nbar" ; "new line")]
-    #[test_case("foo\rbar", r"foo\rbar" ; "carriage return")]
-    #[test_case("foo\0bar", r"foo\0bar" ; "null")]
-    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
-    fn escape_value_wine2(raw: &str, escaped: &str) {
-        assert_eq!(escaped.to_string(), escape_value(raw, Format::Wine2));
-    }
-
     #[test_case("[foo]", "foo", Key::new() ; "add")]
     #[test_case("[-foo]", "foo", Key::deleted() ; "delete")]
     #[test_case("[foo] bar", "foo", Key::new().with_addendum("bar".to_string()) ; "addendum")]
@@ -242,6 +210,15 @@ mod tests {
     #[test_case(r"[foo\bar]", r"foo\\bar", Key::new() ; "multiple backslashes")]
     fn valid_keys(raw: &str, name: &str, parsed: Key) {
         assert_eq!(raw.to_string(), key(&KeyName::new(name), &parsed, Format::Regedit5));
+    }
+
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo"bar"# ; "quote")]
+    #[test_case(r#"fo[o]bar"#, r#"fo\[o\]bar"# ; "bracket")]
+    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    #[test_case(r"Control Panel\International\🌎🌏🌍", r"Control Panel\\International\\\xd83c\xdf0e\xd83c\xdf0f\xd83c\xdf0d" ; "surrogate pair")]
+    fn escaped_keys_wine2(raw: &str, escaped: &str) {
+        assert_eq!(escaped.to_string(), escape_key(raw, Format::Wine2));
     }
 
     #[test_case("@", ValueName::Default ; "default")]
@@ -269,6 +246,28 @@ mod tests {
     #[test_case("hex(b):ff,00,00,00,00,00,00,00", RawValue::Hex { kind: Kind::Qword, bytes: vec![255, 0, 0, 0, 0, 0, 0, 0] } ; "hex qword 255")]
     fn valid_values(raw: &str, parsed: RawValue) {
         assert_eq!(raw, value(&parsed, 0, Format::Regedit5));
+    }
+
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
+    #[test_case("foo\nbar", "foo\nbar" ; "new line")]
+    #[test_case("foo\rbar", "foo\rbar" ; "carriage return")]
+    #[test_case("foo\0bar", "foo\0bar" ; "null")]
+    #[test_case("fooあbar", "fooあbar" ; "Unicode")]
+    fn escaped_values_regedit5(raw: &str, escaped: &str) {
+        assert_eq!(escaped.to_string(), escape_value(raw, Format::Regedit5));
+    }
+
+    #[test_case("", "" ; "empty")]
+    #[test_case(r#"foo\bar"#, r#"foo\\bar"# ; "regular backslash")]
+    #[test_case(r#"foo"bar"#, r#"foo\"bar"# ; "quote")]
+    #[test_case("foo\nbar", r"foo\nbar" ; "new line")]
+    #[test_case("foo\rbar", r"foo\rbar" ; "carriage return")]
+    #[test_case("foo\0bar", r"foo\0bar" ; "null")]
+    #[test_case("fooあbar", r"foo\x3042bar" ; "Unicode")]
+    fn escaped_values_wine2(raw: &str, escaped: &str) {
+        assert_eq!(escaped.to_string(), escape_value(raw, Format::Wine2));
     }
 
     #[test_case("#arch=win32", wine::GlobalOption::Arch("win32".to_string()) ; "arch")]

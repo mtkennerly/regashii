@@ -11,9 +11,6 @@ use std::{
     path::Path,
 };
 
-use once_cell::sync::Lazy;
-use regex::Regex;
-
 /// Main struct for all *.reg file content.
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Registry {
@@ -180,7 +177,7 @@ impl Registry {
         let mut current_key_name = None;
         let mut current_key = None;
 
-        for line in normalized.lines().map(|x| x.trim()).filter(|x| !x.is_empty()) {
+        for line in lines.map(|x| x.trim()).filter(|x| !x.is_empty()) {
             if current_key.is_none() {
                 if let Some(wine_option) = deserialize::wine_global_option(line) {
                     out.wine_options.insert(wine_option);
@@ -284,13 +281,12 @@ pub struct KeyName(String);
 impl KeyName {
     /// This will normalize multiple consecutive backslashes to a single backslash,
     /// and it will remove any trailing backslashes.
-    pub fn new(raw: impl AsRef<str>) -> Self {
-        static BACKSLASHES: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\\{2,})").unwrap());
+    pub fn new(raw: impl AsRef<str> + ToString) -> Self {
+        let mut normalized = raw.as_ref().trim_end_matches('\\').to_string();
 
-        let normalized = BACKSLASHES
-            .replace_all(raw.as_ref(), "\\")
-            .trim_end_matches('\\')
-            .to_string();
+        while normalized.contains(r"\\") {
+            normalized = normalized.replace(r"\\", r"\");
+        }
 
         Self(normalized)
     }

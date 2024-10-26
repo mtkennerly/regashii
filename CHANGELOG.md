@@ -14,6 +14,7 @@
   * Larger registry files could have poor deserialization performance
     because of unoptimized lookups to reuse known keys with different capitalizations.
 * Changed:
+  * Parsing is now roughly twice as fast due to moving away from regular expressions.
   * `Key` is now a struct instead of an enum.
   * Values serialized as hexadecimal bytes (e.g., `Kind::Binary`)
     are now split onto multiple lines when they're long enough.
