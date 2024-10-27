@@ -1,6 +1,8 @@
 /// Error when deserializing a string
 #[derive(Debug, thiserror::Error)]
 pub enum Deserialize {
+    #[error("Malformed")]
+    Malformed,
     #[error("Unknown format: {0}")]
     UnknownFormat(String),
 }

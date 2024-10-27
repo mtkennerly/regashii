@@ -165,47 +165,40 @@ impl Registry {
 
     /// Parse the content of a *.reg file.
     pub fn deserialize(raw: &str) -> Result<Self, error::Deserialize> {
+        use deserialize::Element;
+
         let mut out = Self::default();
 
-        let normalized = deserialize::normalize(raw);
-        let mut lines = normalized.lines();
-
-        if let Some(line) = lines.next() {
-            out.format = deserialize::format(line)?;
-        }
+        let (format, elements) = deserialize::registry(raw)?;
+        out.format = format;
 
         let mut current_key_name = None;
         let mut current_key = None;
 
-        for line in lines.map(|x| x.trim()).filter(|x| !x.is_empty()) {
-            if current_key.is_none() {
-                if let Some(wine_option) = deserialize::wine_global_option(line) {
-                    out.wine_options.insert(wine_option);
-                    continue;
-                }
-            }
+        for element in elements {
+            match element {
+                Element::Key(key_name, key) => {
+                    if let (Some(n), Some(k)) = (current_key_name, current_key) {
+                        out.update(n, k);
+                    }
 
-            if let Some((name, key)) = deserialize::key(line, out.format) {
-                if let (Some(n), Some(k)) = (current_key_name, current_key) {
-                    out.update(n, k);
+                    current_key_name = Some(key_name);
+                    current_key = Some(key);
                 }
-
-                current_key_name = Some(name);
-                current_key = Some(key);
-                continue;
-            }
-
-            if let Some(wine_option) = deserialize::wine_key_option(line) {
-                if let Some(current_key) = current_key.as_mut() {
-                    current_key.add_wine_option(wine_option);
-                    continue;
+                Element::Value(value_name, value) => {
+                    if let Some(key) = current_key.as_mut() {
+                        key.update(value_name, Value::from_raw(value, out.format));
+                    }
                 }
-            }
-
-            if let Some((name, value)) = deserialize::named_value(line, out.format) {
-                if let Some(key) = &mut current_key {
-                    key.update(name, Value::from_raw(value, out.format));
+                Element::WineGlobalOption(option) => {
+                    out.wine_options.insert(option);
                 }
+                Element::WineKeyOption(option) => {
+                    if let Some(key) = current_key.as_mut() {
+                        key.add_wine_option(option);
+                    }
+                }
+                Element::Comment | Element::Blank => continue,
             }
         }
 
