@@ -49,7 +49,7 @@ pub fn registry(raw: &str) -> Result<(Format, Vec<Element>), error::Deserialize>
             RawFormat::Valid(format) => Ok((format, elements)),
             RawFormat::Invalid(format) => Err(error::Deserialize::UnknownFormat(format)),
         },
-        Err(_) => Err(error::Deserialize::Malformed),
+        Err(_) => Err(error::Deserialize::Unparsable),
     }
 }
 
@@ -143,19 +143,15 @@ pub fn element(input: &str, format: Format, found_key: bool) -> IResult<&str, El
 pub fn format(input: &str) -> IResult<&str, RawFormat> {
     let tail = || alt((tag(" "), tag("\t"), tag("\n"), tag("\r"), tag(";")));
 
-    let (input, format) = opt(terminated(tag(Format::REGEDIT4), tail()))(input)?;
-    if format.is_some() {
-        return Ok((input, RawFormat::Valid(Format::Regedit4)));
-    }
-
-    let (input, format) = opt(terminated(tag(Format::REGEDIT5), tail()))(input)?;
-    if format.is_some() {
-        return Ok((input, RawFormat::Valid(Format::Regedit5)));
-    }
-
-    let (input, format) = opt(terminated(tag(Format::WINE2), tail()))(input)?;
-    if format.is_some() {
-        return Ok((input, RawFormat::Valid(Format::Wine2)));
+    for (raw_format, format) in [
+        (Format::REGEDIT_4, Format::Regedit4),
+        (Format::REGEDIT_5, Format::Regedit5),
+        (Format::WINE_2, Format::Wine2),
+    ] {
+        let (input, header) = opt(terminated(tag(raw_format), tail()))(input)?;
+        if header.is_some() {
+            return Ok((input, RawFormat::Valid(format)));
+        }
     }
 
     let (input, format) = take_till(|x| matches!(x, '\n' | '\r'))(input)?;

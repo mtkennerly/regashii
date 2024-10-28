@@ -44,11 +44,7 @@ fn escape_wine_unicode(raw: &str) -> String {
 }
 
 pub fn format(format: Format) -> &'static str {
-    match format {
-        Format::Regedit5 => Format::REGEDIT5,
-        Format::Regedit4 => Format::REGEDIT4,
-        Format::Wine2 => Format::WINE2,
-    }
+    format.raw()
 }
 
 pub fn key_name(name: &KeyName, format: Format) -> String {

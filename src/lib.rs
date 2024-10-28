@@ -30,39 +30,37 @@ impl Registry {
         }
     }
 
-    /// Add or update a key (method chain style).
+    /// Selected registry format.
+    pub fn format(&self) -> Format {
+        self.format
+    }
+
+    /// Stored keys.
+    pub fn keys(&self) -> &BTreeMap<KeyName, Key> {
+        &self.keys
+    }
+
+    /// Stored Wine options.
+    pub fn wine_options(&self) -> &BTreeSet<wine::GlobalOption> {
+        &self.wine_options
+    }
+
+    /// Add or replace a key (method chain style).
     /// Will try to reuse an equivalent existing key name, if any.
     pub fn with(mut self, requested_name: impl Into<KeyName>, key: Key) -> Self {
-        self.update(requested_name.into(), key);
+        self.insert(requested_name.into(), key);
         self
     }
 
     /// Add a Wine option (method chain style).
     pub fn with_wine_option(mut self, option: wine::GlobalOption) -> Self {
-        self.wine_options.insert(option);
+        self.insert_wine_option(option);
         self
     }
 
-    /// Access the raw representation of keys.
-    /// You can use this if you want to bypass key name normalization.
-    pub fn keys(&self) -> &BTreeMap<KeyName, Key> {
-        &self.keys
-    }
-
-    /// Access the raw representation of keys mutably.
-    /// You can use this if you want to bypass key name normalization.
-    pub fn keys_mut(&mut self) -> &mut BTreeMap<KeyName, Key> {
-        &mut self.keys
-    }
-
-    fn insert_key(&mut self, name: KeyName, key: Key) {
-        self.key_names.insert(name.to_lowercase(), name.clone());
-        self.keys.insert(name, key);
-    }
-
-    /// Add or update a key.
+    /// Add or replace a key.
     /// Will try to reuse an equivalent existing key name, if any.
-    pub fn update(&mut self, requested_name: KeyName, key: Key) {
+    pub fn insert(&mut self, requested_name: KeyName, key: Key) {
         let lookup = self.key_name(&requested_name);
 
         if let Some(mut stored) = self.keys.remove(&lookup) {
@@ -127,14 +125,9 @@ impl Registry {
         }
     }
 
-    /// Access the Wine options.
-    pub fn wine_options(&self) -> &BTreeSet<wine::GlobalOption> {
-        &self.wine_options
-    }
-
-    /// Access the Wine options mutably.
-    pub fn wine_options_mut(&mut self) -> &mut BTreeSet<wine::GlobalOption> {
-        &mut self.wine_options
+    /// Add a Wine option.
+    pub fn insert_wine_option(&mut self, option: wine::GlobalOption) {
+        self.wine_options.insert(option);
     }
 
     /// Reuse an equivalent existing key name or normalize the requested one.
@@ -179,7 +172,7 @@ impl Registry {
             match element {
                 Element::Key(key_name, key) => {
                     if let (Some(n), Some(k)) = (current_key_name, current_key) {
-                        out.update(n, k);
+                        out.insert(n, k);
                     }
 
                     current_key_name = Some(key_name);
@@ -187,7 +180,7 @@ impl Registry {
                 }
                 Element::Value(value_name, value) => {
                     if let Some(key) = current_key.as_mut() {
-                        key.update(value_name, Value::from_raw(value, out.format));
+                        key.insert(value_name, Value::from_raw(value, out.format));
                     }
                 }
                 Element::WineGlobalOption(option) => {
@@ -195,7 +188,7 @@ impl Registry {
                 }
                 Element::WineKeyOption(option) => {
                     if let Some(key) = current_key.as_mut() {
-                        key.add_wine_option(option);
+                        key.insert_wine_option(option);
                     }
                 }
                 Element::Comment | Element::Blank => continue,
@@ -203,7 +196,7 @@ impl Registry {
         }
 
         if let (Some(n), Some(k)) = (current_key_name, current_key) {
-            out.update(n, k);
+            out.insert(n, k);
         }
 
         Ok(out)
@@ -234,8 +227,14 @@ impl Registry {
     ///
     /// * `Format::Regedit5` => UTF-16
     /// * `Format::Regedit4` => UTF-8
+    /// * `Format::Wine2` => UTF-8
     pub fn serialize_file<P: AsRef<Path>>(&self, file: P) -> Result<(), error::Write> {
         etc::write_file(file, self.serialize(), self.format)
+    }
+
+    fn insert_key(&mut self, name: KeyName, key: Key) {
+        self.key_names.insert(name.to_lowercase(), name.clone());
+        self.keys.insert(name, key);
     }
 }
 
@@ -255,9 +254,17 @@ pub enum Format {
 }
 
 impl Format {
-    pub const REGEDIT5: &'static str = "Windows Registry Editor Version 5.00";
-    pub const REGEDIT4: &'static str = "REGEDIT4";
-    pub const WINE2: &'static str = "WINE REGISTRY Version 2";
+    pub const REGEDIT_5: &'static str = "Windows Registry Editor Version 5.00";
+    pub const REGEDIT_4: &'static str = "REGEDIT4";
+    pub const WINE_2: &'static str = "WINE REGISTRY Version 2";
+
+    pub fn raw(self) -> &'static str {
+        match self {
+            Self::Regedit5 => Self::REGEDIT_5,
+            Self::Regedit4 => Self::REGEDIT_4,
+            Self::Wine2 => Self::WINE_2,
+        }
+    }
 
     fn is_wine(&self) -> bool {
         match self {
@@ -282,6 +289,10 @@ impl KeyName {
         }
 
         Self(normalized)
+    }
+
+    pub fn raw(&self) -> &str {
+        &self.0
     }
 
     fn to_lowercase(&self) -> Self {
@@ -367,30 +378,28 @@ impl Key {
         &self.wine_options
     }
 
-    /// Add or update a value (method chain style).
+    /// Add or replace a value (method chain style).
     /// Will try to reuse an equivalent existing value name, if any.
     pub fn with(mut self, name: impl Into<ValueName>, value: Value) -> Self {
-        self.update(name.into(), value);
-
+        self.insert(name.into(), value);
         self
     }
 
     /// Add an addendum after the key name (method chain style).
-    /// Does nothing for `Key::Delete`.
     pub fn with_addendum(mut self, addendum: String) -> Self {
-        self.addendum = Some(addendum);
+        self.set_addendum(Some(addendum));
         self
     }
 
     /// Add a Wine option (method chain style).
     pub fn with_wine_option(mut self, option: wine::KeyOption) -> Self {
-        self.wine_options.insert(option);
+        self.insert_wine_option(option);
         self
     }
 
-    /// Add or update a value.
+    /// Add or replace a value.
     /// Will try to reuse an equivalent existing value name, if any.
-    pub fn update(&mut self, requested_name: ValueName, value: Value) {
+    pub fn insert(&mut self, requested_name: ValueName, value: Value) {
         let lookup = self.value_name(&requested_name);
 
         if let Some((stored_name, stored)) = self.values.remove_entry(&lookup) {
@@ -405,12 +414,12 @@ impl Key {
     }
 
     /// Add an addendum after the key name.
-    pub fn add_addendum(&mut self, addendum: String) {
-        self.addendum = Some(addendum);
+    pub fn set_addendum(&mut self, addendum: Option<String>) {
+        self.addendum = addendum;
     }
 
     /// Add a Wine option.
-    pub fn add_wine_option(&mut self, option: wine::KeyOption) {
+    pub fn insert_wine_option(&mut self, option: wine::KeyOption) {
         self.wine_options.insert(option);
     }
 

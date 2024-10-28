@@ -27,6 +27,7 @@ Regashii is a Rust crate that lets you (de)serialize Windows Regedit `*.reg` fil
   * Handling strings which may or may not be null-terminated
 
   If you find an edge case that's handled poorly, please report it.
+* It also supports registry files from [Wine](https://www.winehq.org/).
 
 ## Sample
 ### Read
