@@ -31,6 +31,7 @@
     and added underscores to the `Format` string constants.
 * Removed:
   * `Registry::keys_mut` because it would interfere with the case-normalized lookup optimizations.
+  * Dependency on `once_cell`, using `std::sync::LazyLock` instead.
 
 ## v0.1.0 (2024-05-29)
 

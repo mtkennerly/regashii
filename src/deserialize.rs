@@ -1,6 +1,6 @@
 use crate::{error, wine, Format, Key, KeyKind, KeyName, Kind, RawValue, ValueName};
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -19,7 +19,7 @@ pub fn unescape_wine_unicode(raw: &str) -> String {
         return raw.to_string();
     }
 
-    static UNICODE: Lazy<Regex> = Lazy::new(|| {
+    static UNICODE: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
             r#"(?xs)
             (\\x (?<escape> [0-9a-fA-F]{4}) )
