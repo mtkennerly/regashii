@@ -1,4 +1,4 @@
-## Unreleased
+## v0.2.0 (2024-10-27)
 
 * Added:
   * Support for the `WINE REGISTRY Version 2` format.
