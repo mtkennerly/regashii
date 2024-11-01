@@ -295,17 +295,9 @@ fn specific_value_name_wine(input: &str) -> IResult<&str, ValueName> {
 
 pub fn value_data(input: &str, format: Format) -> IResult<&str, RawValue> {
     let (input, value) = if format.is_wine() {
-        alt((
-            value_delete,
-            value_dword,
-            value_sz_wine,
-            value_sz_empty,
-            value_hex,
-            value_str,
-            value_str_empty,
-        ))(input)
+        alt((value_delete, value_dword, value_sz_wine, value_hex, value_str))(input)
     } else {
-        alt((value_delete, value_dword, value_sz, value_sz_empty, value_hex))(input)
+        alt((value_delete, value_dword, value_sz, value_hex))(input)
     }?;
 
     let value = match value {
@@ -353,27 +345,21 @@ fn value_dword(input: &str) -> IResult<&str, RawValue> {
 fn value_sz(input: &str) -> IResult<&str, RawValue> {
     let (input, read) = delimited(
         char('"'),
-        escaped_transform(
+        opt(escaped_transform(
             none_of("\\\""),
             '\\',
             alt((value("\\", tag("\\")), value("\"", tag("\"")))),
-        ),
+        )),
         char('"'),
     )(input)?;
 
-    Ok((input, RawValue::Sz(read.to_string())))
-}
-
-fn value_sz_empty(input: &str) -> IResult<&str, RawValue> {
-    let (input, _) = ws(tag("\"\""))(input)?;
-
-    Ok((input, RawValue::Sz(String::new())))
+    Ok((input, RawValue::Sz(read.unwrap_or_default())))
 }
 
 fn value_sz_wine(input: &str) -> IResult<&str, RawValue> {
     let (input, read) = delimited(
         char('"'),
-        escaped_transform(
+        opt(escaped_transform(
             none_of("\\\""),
             '\\',
             alt((
@@ -384,11 +370,11 @@ fn value_sz_wine(input: &str) -> IResult<&str, RawValue> {
                 value("\0", tag("0")),
                 value("\\x", tag("x")),
             )),
-        ),
+        )),
         char('"'),
     )(input)?;
 
-    Ok((input, RawValue::Sz(read.to_string())))
+    Ok((input, RawValue::Sz(read.unwrap_or_default())))
 }
 
 fn value_hex(input: &str) -> IResult<&str, RawValue> {
@@ -442,7 +428,7 @@ fn value_str(input: &str) -> IResult<&str, RawValue> {
 
     let (input, data) = delimited(
         char('"'),
-        escaped_transform(
+        opt(escaped_transform(
             none_of("\\\""),
             '\\',
             alt((
@@ -453,31 +439,15 @@ fn value_str(input: &str) -> IResult<&str, RawValue> {
                 value("\0", tag("0")),
                 value("\\x", tag("x")),
             )),
-        ),
+        )),
         char('"'),
     )(input)?;
-
-    Ok((input, RawValue::Str { kind, data }))
-}
-
-fn value_str_empty(input: &str) -> IResult<&str, RawValue> {
-    let (input, _) = tag("str")(input)?;
-
-    let (input, kind) = opt(delimited(char('('), hex_digit1, char(')')))(input)?;
-    let kind = kind
-        .and_then(|kind| u8::from_str_radix(kind, 16).ok())
-        .map(Kind::from)
-        .unwrap_or(Kind::Sz);
-
-    let (input, _) = char(':')(input)?;
-
-    let (input, _) = ws(tag("\"\""))(input)?;
 
     Ok((
         input,
         RawValue::Str {
             kind,
-            data: String::new(),
+            data: data.unwrap_or_default(),
         },
     ))
 }
@@ -528,6 +498,14 @@ mod tests {
     #[test_case("Windows Registry Editor Version 5.00; blah", Format::Regedit5 ; "comment after format")]
     fn format_normalization(input: &str, output: Format) {
         assert_eq!(output, registry(input).unwrap().0)
+    }
+
+    #[test]
+    fn invalid_format() {
+        match registry("foo").unwrap_err() {
+            error::Deserialize::UnknownFormat(format) if format == "foo" => {}
+            _ => panic!(),
+        }
     }
 
     #[test_case("[HKEY_CURRENT_USER] ; blah", vec![
@@ -590,6 +568,7 @@ mod tests {
     #[test_case("[]" ; "blank add key")]
     #[test_case("[-]" ; "blank delete key")]
     #[test_case("[ foo]" ; "inner leading space")]
+    #[test_case("[foo" ; "no closing bracket")]
     fn invalid_keys(raw: &str) {
         assert_eq!(None, key(raw, Format::Regedit5).unwrap().1);
     }
@@ -616,6 +595,17 @@ mod tests {
     #[test_case("\"eq=s\"=\"EQ=S\"", ValueName::Named("eq=s".to_string()), RawValue::Sz("EQ=S".to_string()) ; "quoted equal signs")]
     fn valid_named_values(raw: &str, name: ValueName, parsed: RawValue) {
         assert_eq!(Some((name, parsed)), named_value(raw, Format::Regedit5).unwrap().1);
+    }
+
+    #[test_case("@=\"foo\"\"", Format::Regedit5 ; "sz with unmatched quote")]
+    #[test_case("@=str:\"foo\"\"", Format::Wine2 ; "str with unmatched quote")]
+    fn invalid_named_values_none(raw: &str, format: Format) {
+        assert_eq!(None, named_value(raw, format).unwrap().1);
+    }
+
+    #[test_case("\"foo\"\"=dword:00000001" ; "name with unmatched quote")]
+    fn invalid_named_values_err(raw: &str) {
+        assert!(named_value(raw, Format::Regedit5).is_err());
     }
 
     #[test_case("@", ValueName::Default ; "default")]

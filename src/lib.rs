@@ -63,63 +63,49 @@ impl Registry {
     pub fn insert(&mut self, requested_name: KeyName, key: Key) {
         let lookup = self.key_name(&requested_name);
 
-        if let Some(mut stored) = self.keys.remove(&lookup) {
-            match (stored.kind, key.kind) {
-                (_, KeyKind::Delete) => {
-                    self.insert_key(requested_name, Key::deleted());
-                }
-                (KeyKind::Delete, KeyKind::Add | KeyKind::Replace) => {
-                    self.insert_key(
-                        requested_name,
-                        Key {
-                            kind: KeyKind::Replace,
-                            ..key
-                        },
-                    );
-                }
+        if let Some(stored) = self.keys.remove(&lookup) {
+            let (name, key) = match (stored.kind, key.kind) {
+                (_, KeyKind::Delete) => (requested_name, Key::deleted()),
+                (KeyKind::Delete, KeyKind::Add | KeyKind::Replace) => (
+                    requested_name,
+                    Key {
+                        kind: KeyKind::Replace,
+                        ..key
+                    },
+                ),
                 (KeyKind::Add, KeyKind::Add) => {
-                    stored.values.extend(key.values);
-                    stored.wine_options.extend(key.wine_options);
-                    self.insert_key(
+                    let values: BTreeMap<_, _> = stored.values.into_iter().chain(key.values).collect();
+                    let wine_options = stored.wine_options.into_iter().chain(key.wine_options).collect();
+
+                    (
                         lookup,
                         Key {
                             kind: KeyKind::Add,
-                            value_names: Key::build_name_map(stored.values.keys()),
-                            values: stored.values,
-                            wine_options: stored.wine_options,
+                            value_names: Key::build_name_map(values.keys()),
+                            values,
+                            wine_options,
                             addendum: key.addendum,
                         },
-                    );
+                    )
                 }
-                (KeyKind::Add | KeyKind::Replace, KeyKind::Replace) => {
-                    stored.values.extend(key.values);
-                    stored.wine_options.extend(key.wine_options);
-                    self.insert_key(
+                (KeyKind::Add | KeyKind::Replace, KeyKind::Replace) | (KeyKind::Replace, KeyKind::Add) => {
+                    let values: BTreeMap<_, _> = stored.values.into_iter().chain(key.values).collect();
+                    let wine_options = stored.wine_options.into_iter().chain(key.wine_options).collect();
+
+                    (
                         lookup,
                         Key {
                             kind: KeyKind::Replace,
-                            value_names: Key::build_name_map(stored.values.keys()),
-                            values: stored.values,
-                            wine_options: stored.wine_options,
+                            value_names: Key::build_name_map(values.keys()),
+                            values,
+                            wine_options,
                             addendum: key.addendum,
                         },
-                    );
+                    )
                 }
-                (KeyKind::Replace, KeyKind::Add) => {
-                    stored.values.extend(key.values);
-                    stored.wine_options.extend(key.wine_options);
-                    self.insert_key(
-                        lookup,
-                        Key {
-                            kind: KeyKind::Replace,
-                            value_names: Key::build_name_map(stored.values.keys()),
-                            values: stored.values,
-                            wine_options: stored.wine_options,
-                            addendum: key.addendum,
-                        },
-                    );
-                }
-            }
+            };
+
+            self.insert_key(name, key);
         } else {
             self.insert_key(lookup, key);
         }
