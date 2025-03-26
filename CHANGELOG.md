@@ -1,4 +1,4 @@
-## Unreleased
+## v0.3.0 (2025-03-26)
 
 * Added:
   * `Registry::apply`
