@@ -111,9 +111,22 @@ impl Registry {
         }
     }
 
+    /// Remove a key.
+    pub fn remove(&mut self, requested_name: &KeyName) {
+        let lookup = self.key_name(requested_name);
+
+        self.keys.remove(&lookup);
+        self.key_names.remove(&lookup);
+    }
+
     /// Add a Wine option.
     pub fn insert_wine_option(&mut self, option: wine::GlobalOption) {
         self.wine_options.insert(option);
+    }
+
+    /// Remove a Wine option.
+    pub fn remove_wine_option(&mut self, option: &wine::GlobalOption) {
+        self.wine_options.remove(option);
     }
 
     /// Reuse an equivalent existing key name or normalize the requested one.
@@ -221,6 +234,51 @@ impl Registry {
     fn insert_key(&mut self, name: KeyName, key: Key) {
         self.key_names.insert(name.to_lowercase(), name.clone());
         self.keys.insert(name, key);
+    }
+
+    /// Apply the changes defined in another registry.
+    ///
+    /// If both registries use a Wine format,
+    /// then the options from the patch registry take precedence,
+    /// but we won't remove options from the base registry if the patch doesn't have any.
+    /// Otherwise, Wine options are ignored.
+    ///
+    /// Likewise, addenda from the patch take precedence,
+    /// but we won't remove addenda if the patch doesn't have any.
+    pub fn apply(&mut self, other: Self) {
+        let wine = self.format.is_wine() && other.format.is_wine();
+
+        for (key_name, key) in other.keys {
+            match key.kind {
+                KeyKind::Add => {
+                    let lookup = self.key_name(&key_name);
+                    match self.keys.get_mut(&lookup) {
+                        Some(stored) => {
+                            stored.apply(key, wine);
+                        }
+                        None => {
+                            let mut new_key = Key::new();
+                            new_key.apply(key, wine);
+                            self.insert(key_name, new_key);
+                        }
+                    }
+                }
+                KeyKind::Replace => {
+                    self.remove(&key_name);
+
+                    let mut new_key = Key::new();
+                    new_key.apply(key, wine);
+                    self.insert(key_name, new_key);
+                }
+                KeyKind::Delete => {
+                    self.remove(&key_name);
+                }
+            }
+        }
+
+        if wine && !other.wine_options.is_empty() {
+            self.wine_options = other.wine_options;
+        }
     }
 }
 
@@ -399,6 +457,14 @@ impl Key {
         }
     }
 
+    /// Remove a value.
+    pub fn remove(&mut self, requested_name: &ValueName) {
+        let lookup = self.value_name(requested_name);
+
+        self.values.remove(&lookup);
+        self.value_names.remove(&lookup);
+    }
+
     /// Add an addendum after the key name.
     pub fn set_addendum(&mut self, addendum: Option<String>) {
         self.addendum = addendum;
@@ -407,6 +473,11 @@ impl Key {
     /// Add a Wine option.
     pub fn insert_wine_option(&mut self, option: wine::KeyOption) {
         self.wine_options.insert(option);
+    }
+
+    /// Remove a Wine option.
+    pub fn remove_wine_option(&mut self, option: &wine::KeyOption) {
+        self.wine_options.remove(option);
     }
 
     /// Reuse an equivalent existing value name or normalize the requested one.
@@ -430,6 +501,28 @@ impl Key {
 
     fn build_name_map<'a>(stored: impl Iterator<Item = &'a ValueName>) -> BTreeMap<ValueName, ValueName> {
         stored.map(|stored| (stored.to_lowercase(), stored.clone())).collect()
+    }
+
+    /// Apply the changes defined in another key.
+    fn apply(&mut self, other: Self, wine: bool) {
+        for (value_name, value) in other.values {
+            match value {
+                Value::Delete => {
+                    self.remove(&value_name);
+                }
+                value => {
+                    self.insert(value_name, value);
+                }
+            }
+        }
+
+        if other.addendum.is_some() {
+            self.addendum = other.addendum;
+        }
+
+        if wine && !other.wine_options.is_empty() {
+            self.wine_options = other.wine_options;
+        }
     }
 }
 
@@ -1205,6 +1298,62 @@ WINE REGISTRY Version 2
 "#
             .trim_start(),
             deserialized.serialize()
+        );
+    }
+
+    #[test]
+    fn apply() {
+        let mut base = Registry::new(Format::Regedit5)
+            .with(
+                r"HKEY_CURRENT_USER\Software\regashii\updated",
+                Key::new()
+                    .with(ValueName::Default, Value::Sz("untouched".to_string()))
+                    .with("changed", Value::Dword(1))
+                    .with("deleted", Value::Binary(vec![1])),
+            )
+            .with(
+                r"HKEY_CURRENT_USER\Software\regashii\replaced",
+                Key::new().with("old", Value::Qword(1)),
+            )
+            .with(
+                r"HKEY_CURRENT_USER\Software\regashii\untouched",
+                Key::new().with("untouched", Value::Dword(0)),
+            )
+            .with(r"HKEY_CURRENT_USER\Software\regashii\deleted", Key::new());
+
+        let patch = Registry::new(Format::Regedit5)
+            .with(
+                r"HKEY_CURRENT_USER\Software\regashii\updated",
+                Key::new()
+                    .with("changed", Value::Dword(2))
+                    .with("added", Value::Sz("foo".to_string()))
+                    .with("deleted", Value::Delete),
+            )
+            .with(
+                r"HKEY_CURRENT_USER\Software\regashii\replaced",
+                Key::replaced().with("new", Value::Qword(2)),
+            )
+            .with(r"HKEY_CURRENT_USER\Software\regashii\deleted", Key::deleted());
+
+        base.apply(patch);
+
+        assert_eq!(
+            r#"
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\regashii\replaced]
+"new"=hex(b):02,00,00,00,00,00,00,00
+
+[HKEY_CURRENT_USER\Software\regashii\untouched]
+"untouched"=dword:00000000
+
+[HKEY_CURRENT_USER\Software\regashii\updated]
+@="untouched"
+"added"="foo"
+"changed"=dword:00000002
+"#
+            .trim_start(),
+            base.serialize()
         );
     }
 }

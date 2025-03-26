@@ -1,3 +1,12 @@
+## Unreleased
+
+* Added:
+  * `Registry::apply`
+  * `Registry::remove`
+  * `Registry::remove_wine_option`
+  * `Key::remove`
+  * `Key::remove_wine_option`
+
 ## v0.2.0 (2024-10-27)
 
 * Added:
