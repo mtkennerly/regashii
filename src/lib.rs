@@ -205,10 +205,12 @@ impl Registry {
     pub fn serialize(&self) -> String {
         let mut parts = vec![serialize::format(self.format).to_string()];
 
-        let wine_options = serialize::wine_global_options(&self.wine_options);
-        if !wine_options.is_empty() {
-            parts.push("\n".to_string());
-            parts.extend(wine_options);
+        if self.format.is_wine() {
+            let wine_options = serialize::wine_global_options(&self.wine_options);
+            if !wine_options.is_empty() {
+                parts.push("\n".to_string());
+                parts.extend(wine_options);
+            }
         }
 
         for (name, key) in &self.keys {

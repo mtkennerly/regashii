@@ -6,6 +6,9 @@
   * `Registry::remove_wine_option`
   * `Key::remove`
   * `Key::remove_wine_option`
+* Fixed:
+  * Wine global options were serialized (if set) even in non-Wine formats.
+    This issue did not occur with key options.
 
 ## v0.2.0 (2024-10-27)
 
