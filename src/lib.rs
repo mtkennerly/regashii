@@ -52,6 +52,19 @@ impl Registry {
         self
     }
 
+    /// Add or replace multiple keys at once.
+    /// Will try to reuse an equivalent existing key name, if any.
+    pub fn with_many<I, N>(mut self, pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (N, Key)>,
+        N: Into<KeyName>,
+    {
+        for (name, key) in pairs {
+            self.insert(name.into(), key);
+        }
+        self
+    }
+
     /// Add a Wine option (method chain style).
     pub fn with_wine_option(mut self, option: wine::GlobalOption) -> Self {
         self.insert_wine_option(option);
@@ -431,6 +444,19 @@ impl Key {
         self
     }
 
+    /// Add or replace multiple values at once.
+    /// Will try to reuse an equivalent existing value name, if any.
+    pub fn with_many<I, N>(mut self, pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (N, Value)>,
+        N: Into<ValueName>,
+    {
+        for (name, key) in pairs {
+            self.insert(name.into(), key);
+        }
+        self
+    }
+
     /// Add an addendum after the key name (method chain style).
     pub fn with_addendum(mut self, addendum: String) -> Self {
         self.set_addendum(Some(addendum));
@@ -541,6 +567,13 @@ impl ValueName {
     /// Initializes a `ValueName::Named` variant.
     pub fn named(name: impl Into<String>) -> Self {
         Self::Named(name.into())
+    }
+
+    pub fn raw(&self) -> &str {
+        match self {
+            Self::Default => "@",
+            Self::Named(name) => name,
+        }
     }
 
     fn to_lowercase(&self) -> Self {
