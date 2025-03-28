@@ -543,6 +543,13 @@ impl ValueName {
         Self::Named(name.into())
     }
 
+    pub fn raw(&self) -> &str {
+        match self {
+            Self::Default => "@",
+            Self::Named(name) => name,
+        }
+    }
+
     fn to_lowercase(&self) -> Self {
         match self {
             Self::Default => Self::Default,
