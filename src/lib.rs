@@ -52,6 +52,19 @@ impl Registry {
         self
     }
 
+    /// Add or replace multiple keys at once.
+    /// Will try to reuse an equivalent existing key name, if any.
+    pub fn with_many<I, N>(mut self, pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (N, Key)>,
+        N: Into<KeyName>,
+    {
+        for (name, key) in pairs {
+            self.insert(name.into(), key);
+        }
+        self
+    }
+
     /// Add a Wine option (method chain style).
     pub fn with_wine_option(mut self, option: wine::GlobalOption) -> Self {
         self.insert_wine_option(option);
