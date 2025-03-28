@@ -444,6 +444,19 @@ impl Key {
         self
     }
 
+    /// Add or replace multiple values at once.
+    /// Will try to reuse an equivalent existing value name, if any.
+    pub fn with_many<I, N>(mut self, pairs: I) -> Self
+    where
+        I: IntoIterator<Item = (N, Value)>,
+        N: Into<ValueName>,
+    {
+        for (name, key) in pairs {
+            self.insert(name.into(), key);
+        }
+        self
+    }
+
     /// Add an addendum after the key name (method chain style).
     pub fn with_addendum(mut self, addendum: String) -> Self {
         self.set_addendum(Some(addendum));
