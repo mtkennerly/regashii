@@ -1,11 +1,13 @@
+## v0.4.0 (2025-03-28)
+
+* Added:
+  * `Registry::with_many`, `Key::with_many`, `ValueName::raw`.
+    ([Contributed by cyberphantom52](https://github.com/mtkennerly/regashii/pull/5))
+
 ## v0.3.0 (2025-03-26)
 
 * Added:
-  * `Registry::apply`
-  * `Registry::remove`
-  * `Registry::remove_wine_option`
-  * `Key::remove`
-  * `Key::remove_wine_option`
+  * `Registry::apply`, `Registry::remove`, `Registry::remove_wine_option`, `Key::remove`, `Key::remove_wine_option`.
 * Fixed:
   * Wine global options were serialized (if set) even in non-Wine formats.
     This issue did not occur with key options.
