@@ -2,7 +2,7 @@
 name = "regashii"
 version = "0.4.0"
 authors = ["mtkennerly <mtkennerly@gmail.com>"]
-edition = "2021"
+edition = "2024"
 description = "Read and write Regedit export files"
 repository = "https://github.com/mtkennerly/regashii"
 readme = "README.md"

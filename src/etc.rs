@@ -2,7 +2,7 @@ use std::path::Path;
 
 use utf16string::{LittleEndian, WString};
 
-use crate::{error, Format};
+use crate::{Format, error};
 
 const BOM_LE: &str = "\u{feff}";
 const BOM_BE: &str = "\u{ffef}";

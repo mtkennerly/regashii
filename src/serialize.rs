@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{wine, Format, Key, KeyKind, KeyName, Kind, RawValue, ValueName};
+use crate::{Format, Key, KeyKind, KeyName, Kind, RawValue, ValueName, wine};
 
 fn quoted(raw: &str) -> String {
     format!("\"{raw}\"")

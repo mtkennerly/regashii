@@ -1,17 +1,17 @@
-use crate::{error, wine, Format, Key, KeyKind, KeyName, Kind, RawValue, ValueName};
+use crate::{Format, Key, KeyKind, KeyName, Kind, RawValue, ValueName, error, wine};
 use regex::Regex;
 use std::sync::LazyLock;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use nom::{
+    AsChar, IResult,
     branch::alt,
-    bytes::complete::{escaped_transform, tag, take_till, take_till1, take_while, take_while1, take_while_m_n},
+    bytes::complete::{escaped_transform, tag, take_till, take_till1, take_while, take_while_m_n, take_while1},
     character::complete::{char, hex_digit1, line_ending, none_of, space0, space1},
     combinator::{eof, opt, value},
     multi::{fold_many0, many1, separated_list0},
     sequence::{delimited, terminated, tuple},
-    AsChar, IResult,
 };
 
 pub fn unescape_wine_unicode(raw: &str) -> String {
@@ -578,7 +578,7 @@ mod tests {
     #[test_case("foo\0bar", "[foo\0bar]" ; "null")]
     #[test_case("fooあbar", "[fooあbar]" ; "Unicode")]
     fn escaped_keys_regedit5(unescaped: &str, raw: &str) {
-        assert_eq!(unescaped, key(raw, Format::Regedit5).unwrap().1.unwrap().0 .0.as_str());
+        assert_eq!(unescaped, key(raw, Format::Regedit5).unwrap().1.unwrap().0.0.as_str());
     }
 
     #[test_case(r#"foo\bar"#, r#"[foo\\bar]"# ; "regular backslash")]
@@ -587,7 +587,7 @@ mod tests {
     #[test_case("fooあbar", r"[foo\x3042bar]" ; "Unicode")]
     #[test_case(r"Control Panel\International\🌎🌏🌍", r"[Control Panel\\International\\\xd83c\xdf0e\xd83c\xdf0f\xd83c\xdf0d]" ; "surrogate pair")]
     fn escaped_keys_wine(unescaped: &str, raw: &str) {
-        assert_eq!(unescaped, key(raw, Format::Wine2).unwrap().1.unwrap().0 .0.as_str());
+        assert_eq!(unescaped, key(raw, Format::Wine2).unwrap().1.unwrap().0.0.as_str());
     }
 
     #[test_case("@=\"a\"", ValueName::Default, RawValue::Sz("a".to_string()) ; "simple")]

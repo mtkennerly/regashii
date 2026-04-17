@@ -1,6 +1,6 @@
 //! This example reads a registry file and prints some of its content.
 
-use regashii::{error, KeyKind, Registry};
+use regashii::{KeyKind, Registry, error};
 
 fn main() -> Result<(), error::Read> {
     let registry = Registry::deserialize_file("tests/simple-regedit5.reg")?;

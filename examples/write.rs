@@ -1,6 +1,6 @@
 //! This example creates a new registry file.
 
-use regashii::{error, Format, Key, Kind, Registry, Value, ValueName};
+use regashii::{Format, Key, Kind, Registry, Value, ValueName, error};
 
 fn main() -> Result<(), error::Write> {
     let registry = Registry::new(Format::Regedit5)
